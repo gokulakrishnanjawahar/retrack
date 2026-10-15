@@ -25,13 +25,13 @@ Raw full traces ──► object storage (compressed), not Postgres.
 | Component | Responsibility | Tech (decided / OPEN) |
 |---|---|---|
 | Python SDK | LangGraph callback handler for capture; pre-task recall node; optional LangGraph `BaseStore` adapter; local mode (SQLite + sqlite-vec) | Python 3.12, langgraph, httpx |
-| Ingest API | Authenticated, idempotent ingestion (run ID is the idempotency key), schema validation, backpressure; replies 202 immediately | Framework OPEN |
-| Job queue | Fan-out of firewall, scoring, distillation and embedding jobs; retries; dead-letter queue | pgmq (decided) |
+| Ingest API | Authenticated, idempotent ingestion (run ID is the idempotency key), schema validation, backpressure; replies 202 immediately | FastAPI on Vercel (`bom1`) |
+| Job queue | Fan-out of firewall, scoring, distillation and embedding jobs; retries; dead-letter queue | pgmq (decided); drained by Vercel cron jobs |
 | Firewall pipeline | Taint propagation, secret and PII scanning, injection classifier, tool-choice anomaly checks, quarantine | LangGraph; LLM OPEN |
 | Scorer pipeline | Outcome from tests, feedback, business events, then judge model as fallback; attaches confidence | LangGraph; LLM OPEN |
 | Distiller pipeline | Playbook and failure-signature extraction, dedupe/merge, versioning | LangGraph; LLM OPEN |
 | Store | All structured data and vector index | Supabase Postgres + pgvector (decided) |
-| Recall API | Hybrid search (vector + full-text + metadata filters), rerank, confidence gate | Framework OPEN |
+| Recall API | Hybrid search (vector + full-text + metadata filters), rerank, confidence gate | FastAPI on Vercel (`bom1`) |
 | Regression runner | Replays eval cases; model-migration report | Python CLI + GitHub Action |
 | Dashboard | ROI holdout charts, review and quarantine queues, playbook diff/rollback, API key management | Next.js; login OPEN |
 | Trace archive | Compressed full traces, retention per project | Object storage (Supabase Storage likely; confirm) |

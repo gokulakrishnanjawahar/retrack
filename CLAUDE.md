@@ -30,6 +30,7 @@ This file is short on purpose. Before any feature work, read the relevant file i
 - **Dashboard:** Next.js.
 - **SDK auth:** per-project API keys, stored hashed.
 - **Usage metering:** simple daily counters in Postgres.
+- **Backend:** FastAPI, hosted on Vercel in `bom1` (Mumbai); queue workers run as Vercel cron jobs.
 - **Local development:** a dev Supabase cloud project (no Docker).
 - **Migrations:** plain SQL in `supabase/migrations/`, applied with the Supabase CLI. No ORM.
 - **Python tooling:** uv (packages, Python version), pytest, ruff.
@@ -40,7 +41,6 @@ This file is short on purpose. Before any feature work, read the relevant file i
 
 Do not pick any of these yourself. If a task depends on one, stop and ask. Full list and context in `docs/decisions.md`.
 
-- Backend framework and hosting
 - Embedding model (and therefore vector dimension)
 - LLM provider/model for distillation, judging and firewall classification
 - Dashboard login (Supabase Auth, custom, or Clerk)

@@ -20,12 +20,13 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Pricing | Not decided; out of scope for code | Only record usage |
 | Phase order | See `plan.md` (2026-10-15) | Change only with Gokul's approval |
 | Local development | Dev Supabase cloud project (no Docker); migrations applied with Supabase CLI `db push` | Tests that need a database run against it |
+| Backend framework | FastAPI (Python) | Portable across hosts |
+| Hosting | Vercel, region `bom1` (Mumbai), same region as the database | Queue workers run as Vercel cron jobs; per-minute cron needs the Vercel Pro plan once workers exist (Phase 3+) |
 | ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)
 | Area | Options under consideration | Blocks |
 |---|---|---|
-| Backend framework and hosting | To explore (e.g. FastAPI on Railway, Supabase Edge Functions, AWS, others) | Ingest API, Recall API, workers |
 | Embedding model | To analyse (quality, cost, dimension, provider) | Vector dimension, Blocks D and E |
 | LLM for distillation, judging, firewall | Proposed default Claude Haiku 5.5 behind a provider-agnostic interface; not confirmed | Blocks C, D, G |
 | Dashboard login | Supabase Auth, custom, or Clerk | Block L |
