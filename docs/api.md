@@ -47,7 +47,7 @@ from retrack import Retrack
 rt = Retrack(api_key=os.environ["RETRACK_API_KEY"], agent="support-agent")
 graph = builder.compile()
 result = graph.invoke(inputs, config={"callbacks": [rt.callback()]})  # capture
-memory = rt.recall(task=..., model_id=..., tool_versions=...)        # before task
+memory = rt.recall(task=..., model_id=..., tool_versions=...)  # before task
 rt.feedback(run_id, outcome="success", source="test")
 ```
 Final shapes are decided during implementation; propose before changing.

@@ -10,3 +10,5 @@ node_modules/
 .next/
 .DS_Store
 supabase/.temp/
+dist/
+*.egg-info/
