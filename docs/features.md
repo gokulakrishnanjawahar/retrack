@@ -1,6 +1,6 @@
 # Features
 
-Phase order is OPEN; Gokul decides as the build progresses. Features are grouped into blocks with dependencies so any order can be chosen safely. Each block lists acceptance criteria: a block is done only when all are met and tests pass.
+Build order is in `plan.md`. Features are grouped into blocks with dependencies so any order can be chosen safely. Each block lists acceptance criteria: a block is done only when all are met and tests pass.
 
 ## Block A: Foundation
 Depends on: nothing.

@@ -18,6 +18,8 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Developer OS | macOS (Apple Silicon) | |
 | Git | GitHub remote: gokulakrishnanjawahar/retrack, branch `main`; private while building | Open vs closed source decided after the product is built |
 | Pricing | Not decided; out of scope for code | Only record usage |
+| Phase order | See `plan.md` (2026-10-15) | Change only with Gokul's approval |
+| ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)
 | Area | Options under consideration | Blocks |
@@ -27,6 +29,5 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | LLM for distillation, judging, firewall | Proposed default Claude Haiku 5.5 behind a provider-agnostic interface; not confirmed | Blocks C, D, G |
 | Dashboard login | Supabase Auth, custom, or Clerk | Block L |
 | Local development setup | Supabase CLI local stack, plain Postgres in Docker, or a dev Supabase cloud project | First run of Block A |
-| Phase order | Decided during the build; see `features.md` dependencies | Which block next |
 | Open vs closed source, licence | Decide after the product is built; repo stays private until then | Repo structure, licence file |
 | Object storage for traces | Supabase Storage likely | Trace archive |

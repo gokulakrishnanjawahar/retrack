@@ -18,7 +18,7 @@ This file is short on purpose. Before any feature work, read the relevant file i
 | Taint, redaction, quarantine | `docs/firewall.md` |
 | Regression tests, model migration | `docs/regression-migration.md` |
 | Cost, latency, limits | `docs/constraints.md` |
-| What to build and in what order | `docs/features.md` |
+| What to build and in what order | `docs/plan.md`, `docs/features.md` |
 | Words you don't recognise | `docs/glossary.md` |
 
 ## Decided stack
@@ -30,6 +30,7 @@ This file is short on purpose. Before any feature work, read the relevant file i
 - **Dashboard:** Next.js.
 - **SDK auth:** per-project API keys, stored hashed.
 - **Usage metering:** simple daily counters in Postgres.
+- **Migrations:** plain SQL in `supabase/migrations/`, applied with the Supabase CLI. No ORM.
 - **Python tooling:** uv (packages, Python version), pytest, ruff.
 - **Repo:** monorepo (layout below).
 - **Developer machine:** macOS (Apple Silicon). Give macOS commands.
@@ -43,7 +44,6 @@ Do not pick any of these yourself. If a task depends on one, stop and ask. Full 
 - LLM provider/model for distillation, judging and firewall classification
 - Dashboard login (Supabase Auth, custom, or Clerk)
 - Local development setup
-- Phase order
 - Open source vs closed source, and licence
 
 When an open decision blocks you, write code behind an interface (e.g. an `Embedder` or `LLMClient` protocol) only if Gokul agrees.
