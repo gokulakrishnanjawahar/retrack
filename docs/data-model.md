@@ -1,6 +1,6 @@
 # Data model (Supabase Postgres + pgvector)
 
-All tables carrying customer data have `project_id` and row-level security (RLS) policies. Vector dimension depends on the embedding model, which is OPEN; write `vector(<DIM>)` as a placeholder until decided. Ask before creating migrations.
+All tables carrying customer data have `project_id` and row-level security (RLS) policies. The server runs each request as the `retrack_api` role with `app.project_id` set for the transaction; RLS exposes only that project's rows. Supabase's `anon` and `authenticated` roles have no access until dashboard login is decided. API keys are checked by `private.verify_api_key`, the only path from `retrack_api` to `api_keys`. Vector dimension depends on the embedding model, which is OPEN; write `vector(<DIM>)` as a placeholder until decided. Ask before creating migrations.
 
 ## Tenancy and access
 | Table | Key fields |
@@ -11,13 +11,13 @@ All tables carrying customer data have `project_id` and row-level security (RLS)
 | api_keys | id, project_id, prefix (shown to user, e.g. `rtk_live_ab12`), key_hash, name, created_at, last_used_at, revoked_at |
 | members | org_id, user_id, role |
 
-API keys: generate a random secret, show it once, store only a hash (e.g. SHA-256 with a server-side pepper) plus a short prefix for lookup. Support revoke and rotate.
+API keys: format `rtk_live_<48 hex>` (or `rtk_test_`); show once; store only HMAC-SHA256(pepper, secret) plus a prefix (`rtk_live_` + 8 chars) for lookup. Pepper is `RETRACK_KEY_PEPPER`. Support revoke and rotate. Project defaults: `retention_days` 90, `region` ap-south-1.
 
 ## Runs
 | Table | Key fields |
 |---|---|
-| runs | id (client-generated, idempotency key), project_id, agent_id, task_text, task_embedding vector(<DIM>), model_id, tool_versions jsonb, outcome (success / failure / unknown), outcome_source (test / feedback / event / judge), confidence, tokens_in, tokens_out, cost_usd, latency_ms, taint_level (trusted / untrusted / quarantined), holdout bool, recalled_playbook_ids uuid[], trace_uri, created_at |
-| steps | run_id, idx, type (llm / tool), tool_name, args_hash, args_redacted jsonb, result_class, error_class, latency_ms, tokens_in, tokens_out, input_trust (trusted / untrusted) |
+| runs | id (client-generated, idempotency key; primary key is (project_id, id) so tenants never collide), project_id, agent_id, task_text, task_embedding vector(<DIM>) (added in Phase 5), model_id, tool_versions jsonb, outcome (success / failure / unknown), outcome_source (test / feedback / event / judge), confidence, tokens_in, tokens_out, cost_usd, latency_ms, taint_level (trusted / untrusted / quarantined), holdout bool, recalled_playbook_ids uuid[], trace_uri, created_at |
+| steps | project_id, run_id, idx (primary key: project_id + run_id + idx), type (llm / tool), tool_name, args_hash, args_redacted jsonb, result_class, error_class, latency_ms, tokens_in, tokens_out, input_trust (trusted / untrusted) |
 
 ## Memory
 | Table | Key fields |

@@ -5,7 +5,7 @@ Phase order, agreed with Gokul on 2026-10-15. Blocks refer to `features.md`; eac
 | Phase | Build | Blocks | Decision needed first |
 |---|---|---|---|
 | 0. Setup | uv workspace, ruff, pytest, `.env.example`, folder skeleton | part of A | none |
-| 1. Foundation | Supabase schema (tenancy, api_keys, runs, steps, usage_daily), RLS, RLS isolation tests, API key create/hash/verify/revoke | A | Local development setup |
+| 1. Foundation | Supabase schema (tenancy, api_keys, runs, steps, usage_daily), RLS, RLS isolation tests, API key create/hash/verify/revoke | A | none (dev cloud project chosen) |
 | 2. Capture | SDK LangGraph callback + buffered async sender, `POST /v1/runs` (idempotent, enqueue to pgmq), usage counters | B | Backend framework and hosting |
 | 3. Firewall core | Taint tracking, secret/PII redaction, "tainted runs never become active" rule | G (first half) | none |
 | 4. Scoring | Scorer pipeline (tests/feedback/events, judge fallback), `POST /v1/feedback` | C | LLM provider |

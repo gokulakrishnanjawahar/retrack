@@ -30,6 +30,7 @@ This file is short on purpose. Before any feature work, read the relevant file i
 - **Dashboard:** Next.js.
 - **SDK auth:** per-project API keys, stored hashed.
 - **Usage metering:** simple daily counters in Postgres.
+- **Local development:** a dev Supabase cloud project (no Docker).
 - **Migrations:** plain SQL in `supabase/migrations/`, applied with the Supabase CLI. No ORM.
 - **Python tooling:** uv (packages, Python version), pytest, ruff.
 - **Repo:** monorepo (layout below).
@@ -43,7 +44,6 @@ Do not pick any of these yourself. If a task depends on one, stop and ask. Full 
 - Embedding model (and therefore vector dimension)
 - LLM provider/model for distillation, judging and firewall classification
 - Dashboard login (Supabase Auth, custom, or Clerk)
-- Local development setup
 - Open source vs closed source, and licence
 
 When an open decision blocks you, write code behind an interface (e.g. an `Embedder` or `LLMClient` protocol) only if Gokul agrees.
@@ -82,5 +82,18 @@ uv run pytest           # run tests
 uv run ruff check .     # lint
 uv run ruff format .    # format
 ```
+
+## Commands (database)
+
+Dev project `retrack-dev` (ref in `.env`), org `retrack`, region ap-south-1. Load `.env` first: `set -a && . ./.env && set +a`.
+
+```
+supabase migration new <name>          # new SQL migration file
+supabase db push --yes                 # apply migrations to the dev project
+supabase db lint --linked -s public,private
+psql "$DATABASE_URL"                   # SQL shell (session pooler)
+```
+
+Database tests read `DATABASE_URL` from `.env` and roll back every change; they are skipped without it.
 
 Dashboard and server run commands will be added once their OPEN decisions are made.
