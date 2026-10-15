@@ -1,0 +1,21 @@
+# Glossary
+
+- **Run / trajectory:** the full step-by-step record of one agent task.
+- **Playbook:** a distilled, reusable "how this was solved" recipe: preconditions, steps, pitfalls.
+- **Failure signature:** a recognisable description of a failure (tool, error class, input shape) plus its known recovery, if any.
+- **Fingerprint:** hash identifying a failure signature.
+- **Recall:** fetching relevant playbooks and warnings before a task.
+- **Gate / confidence gate:** the scoring rule that decides whether a playbook is injected.
+- **Plan replay:** reusing a stored plan directly instead of planning from scratch.
+- **Holdout:** a slice of runs deliberately given no memory, to measure real impact.
+- **Taint:** a label meaning a run consumed untrusted input.
+- **Quarantine:** a state where a memory item is stored but never recalled until reviewed.
+- **Provenance:** the record of where a memory item came from.
+- **Memory poisoning:** an attack that plants harmful content in an agent's long-term memory.
+- **Eval case:** a test derived from a playbook or failure.
+- **Regression test:** a test confirming something that used to work still works.
+- **Model migration:** switching an agent to a new model; Retrack replays memory to predict breakage.
+- **Circuit-breaker:** automatic stop for retries that cannot succeed.
+- **RLS (row-level security):** Postgres feature that restricts which rows a user or key can access.
+- **pgmq:** a message queue built into Postgres.
+- **Idempotent:** sending the same request twice has the same effect as once.
