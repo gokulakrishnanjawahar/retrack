@@ -16,7 +16,7 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Repo | Monorepo; may restructure for open source later | Keep `sdk/` independent of `server/` |
 | Python tooling | uv, pytest, ruff | |
 | Developer OS | macOS (Apple Silicon) | |
-| Git | GitHub remote: gokulakrishnanjawahar/retrack, branch `main` | Repo visibility does not settle open vs closed source |
+| Git | GitHub remote: gokulakrishnanjawahar/retrack, branch `main`; private while building | Open vs closed source decided after the product is built |
 | Pricing | Not decided; out of scope for code | Only record usage |
 
 ## OPEN (ask before choosing)
@@ -28,5 +28,5 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Dashboard login | Supabase Auth, custom, or Clerk | Block L |
 | Local development setup | Supabase CLI local stack, plain Postgres in Docker, or a dev Supabase cloud project | First run of Block A |
 | Phase order | Decided during the build; see `features.md` dependencies | Which block next |
-| Open vs closed source, licence | Undecided | Repo structure, licence file |
+| Open vs closed source, licence | Decide after the product is built; repo stays private until then | Repo structure, licence file |
 | Object storage for traces | Supabase Storage likely | Trace archive |
