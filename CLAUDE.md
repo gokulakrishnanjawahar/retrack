@@ -30,7 +30,7 @@ This file is short on purpose. Before any feature work, read the relevant file i
 - **Dashboard:** Next.js.
 - **SDK auth:** per-project API keys, stored hashed.
 - **Usage metering:** simple daily counters in Postgres.
-- **Backend:** FastAPI, hosted on Vercel in `bom1` (Mumbai); queue workers run as Vercel cron jobs.
+- **Backend:** FastAPI, hosted on Vercel in `bom1` (Mumbai). Queue workers are triggered every minute by Supabase Cron calling `/internal/drain`.
 - **Local development:** a dev Supabase cloud project (no Docker).
 - **Migrations:** plain SQL in `supabase/migrations/`, applied with the Supabase CLI. No ORM.
 - **Python tooling:** uv (packages, Python version), pytest, ruff.

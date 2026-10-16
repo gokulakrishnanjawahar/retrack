@@ -20,13 +20,41 @@ Dashboard (Next.js) reads metrics, review queue, quarantine, playbook diffs.
 Raw full traces ──► object storage (compressed), not Postgres.
 ```
 
+## Runtime (where things run)
+
+```
+Customer agent + SDK
+   │ HTTPS (Bearer API key)
+   ▼
+Vercel, region bom1 (Mumbai) ── one FastAPI app ─────────────────────────────┐
+   │  /v1/*            public API: validate, store, enqueue, reply 202        │
+   │  /internal/drain  worker entry: read jobs from pgmq, run pipelines       │
+   ▼                                  ▲                                       │
+Supabase, region ap-south-1 (Mumbai)  │ every minute, HTTP POST with secret   │
+   Postgres + pgvector + pgmq ── Supabase Cron (pg_cron + pg_net) ────────────┘
+```
+
+- **API and workers are one FastAPI app on Vercel.** Public routes live under `/v1/`; worker routes live under `/internal/` and require a shared secret header. They never accept an API key.
+- **Supabase Cron triggers workers.** A `pg_cron` job calls `/internal/drain` via `pg_net` every minute. The secret is kept in Supabase Vault. Both are defined in SQL migrations, so nothing is configured by hand.
+- **Draining.** Each call reads a batch from pgmq with a visibility timeout, processes it, and deletes finished jobs. A job that fails becomes visible again and is retried; after a set number of attempts it moves to a dead-letter queue. Overlapping drain calls are safe because a read job is invisible to other readers. Each call stops well before Vercel's function time limit.
+- **Database connections.** Vercel functions connect through Supabase's transaction pooler. All tenant queries use transaction-local settings (`project_scope`), which work with transaction pooling.
+- **Same region.** API, workers and database all run in Mumbai, to meet the ingest (50 ms) and recall (300 ms) targets.
+
+### Cost
+| Stage | Supabase | Vercel | Notes |
+|---|---|---|---|
+| Building | Free | Hobby (free) | Free Supabase projects pause when inactive; Hobby is non-commercial only |
+| Launch (paying customers) | Pro (~$25/mo) | Pro (~$20/mo) | Required for commercial use and no pausing |
+
+LLM and embedding API calls (from Phase 4) are billed by the chosen provider; provider is OPEN.
+
 ## Components
 
 | Component | Responsibility | Tech (decided / OPEN) |
 |---|---|---|
 | Python SDK | LangGraph callback handler for capture; pre-task recall node; optional LangGraph `BaseStore` adapter; local mode (SQLite + sqlite-vec) | Python 3.12, langgraph, httpx |
 | Ingest API | Authenticated, idempotent ingestion (run ID is the idempotency key), schema validation, backpressure; replies 202 immediately | FastAPI on Vercel (`bom1`) |
-| Job queue | Fan-out of firewall, scoring, distillation and embedding jobs; retries; dead-letter queue | pgmq (decided); drained by Vercel cron jobs |
+| Job queue | Fan-out of firewall, scoring, distillation and embedding jobs; retries; dead-letter queue | pgmq (decided); drained by `/internal/drain`, triggered every minute by Supabase Cron |
 | Firewall pipeline | Taint propagation, secret and PII scanning, injection classifier, tool-choice anomaly checks, quarantine | LangGraph; LLM OPEN |
 | Scorer pipeline | Outcome from tests, feedback, business events, then judge model as fallback; attaches confidence | LangGraph; LLM OPEN |
 | Distiller pipeline | Playbook and failure-signature extraction, dedupe/merge, versioning | LangGraph; LLM OPEN |

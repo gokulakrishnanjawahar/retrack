@@ -21,7 +21,8 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Phase order | See `plan.md` (2026-10-15) | Change only with Gokul's approval |
 | Local development | Dev Supabase cloud project (no Docker); migrations applied with Supabase CLI `db push` | Tests that need a database run against it |
 | Backend framework | FastAPI (Python) | Portable across hosts |
-| Hosting | Vercel, region `bom1` (Mumbai), same region as the database | Queue workers run as Vercel cron jobs; per-minute cron needs the Vercel Pro plan once workers exist (Phase 3+) |
+| Hosting | Vercel, region `bom1` (Mumbai), same region as the database | Hobby (free) while building; Pro required at launch (commercial use) |
+| Worker trigger | Supabase Cron (`pg_cron` + `pg_net`) calls a secret-protected `/internal/drain` endpoint every minute | Free; defined in SQL migrations. GitHub Actions and Vercel Hobby cron rejected (too slow) |
 | ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)
