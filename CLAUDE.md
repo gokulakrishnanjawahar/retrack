@@ -96,4 +96,10 @@ psql "$DATABASE_URL"                   # SQL shell (session pooler)
 
 Database tests read `DATABASE_URL` from `.env` and roll back every change; they are skipped without it.
 
-Dashboard and server run commands will be added once their OPEN decisions are made.
+Run the API locally (reads `.env` for `SERVER_DATABASE_URL` and `RETRACK_KEY_PEPPER`):
+
+```
+set -a && . ./.env && set +a && uv run uvicorn retrack_server.app:app --reload
+```
+
+Dashboard run commands will be added once its OPEN decisions are made.
