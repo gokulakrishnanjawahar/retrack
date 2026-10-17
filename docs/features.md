@@ -66,7 +66,8 @@ Depends on: D, G.
 ## Block L: Dashboard
 Depends on: A (grows with every block). Login provider OPEN.
 - API key management, metrics/ROI holdout charts, review and quarantine queues, playbook diff, migration reports.
-**Done when:** each backend feature that exists has its screen.
+- Super-admin area (Gokul only): analytics across all organizations and projects (usage, runs, recalls, success rates, costs). Customers can never reach it.
+**Done when:** each backend feature that exists has its screen; super-admin pages reject every account except the super-admin.
 
 ## Block M: Later
 - TypeScript SDK; OpenTelemetry ingestion for non-LangGraph frameworks; self-hosted deployment; audit logs.

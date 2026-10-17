@@ -14,6 +14,27 @@ Authentication: `Authorization: Bearer <api_key>` on every request. The key iden
 | `GET /v1/migrations/{id}` | Per-playbook pass/fail report. |
 | `GET /v1/metrics` | Holdout-based success rate, token and cost deltas, recall hit rate, for a time range. |
 
+## Run ingest request (approved 2026-10-17)
+One run = one finished agent task, sent by the SDK after the run. Fields describe the **customer's** agent (its model, its tools), not Retrack.
+```json
+{
+  "id": "uuid (client-generated; idempotency key)",
+  "agent": "support-agent",
+  "task": "Refund order #123 that arrived damaged",
+  "model_id": "claude-haiku-5-5",
+  "tool_versions": {"stripe": "2026-09", "orders_api": "v3"},
+  "tokens_in": 1200, "tokens_out": 300, "cost_usd": 0.004, "latency_ms": 5400,
+  "outcome_hint": {"outcome": "success", "source": "test"},
+  "steps": [
+    {"idx": 0, "type": "tool", "tool_name": "orders_api", "args": {"order_id": "123"},
+     "result_class": "ok", "error_class": null, "latency_ms": 120, "input_trust": "untrusted"}
+  ]
+}
+```
+Limits: request body at most 1 MB (413), at most 500 steps (422). Until the Phase 3 firewall, the server stores only a hash of `args`, never raw values. `outcome_hint.source` is one of `test`, `feedback`, `event`.
+
+Response `202`: `{"id": "...", "duplicate": false}`; `duplicate` is true when the run id was already stored for this project.
+
 ## Recall request (sketch)
 ```json
 {

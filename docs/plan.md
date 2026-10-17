@@ -16,7 +16,7 @@ Phase order, agreed with Gokul on 2026-10-15. Blocks refer to `features.md`; eac
 | 9. Regression | Eval case generation, `retrack test` CLI, GitHub Action | H | none |
 | 10. Migration | Model-migration replay and per-playbook report | I | none |
 | 11. Recovery | Known-fix recovery, circuit-breaker, plan replay | J | none |
-| 12. Dashboard | API keys, ROI holdout charts, review/quarantine queues, playbook diff, migration reports | L | Dashboard login |
+| 12. Dashboard | API keys, ROI holdout charts, review/quarantine queues, playbook diff, migration reports; super-admin analytics across all projects, Gokul only | L | Dashboard login |
 | 13. Fleet sharing | Cross-agent playbook proposals, approve, rollback | K | none |
 
 Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit logs.
