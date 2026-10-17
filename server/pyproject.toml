@@ -4,6 +4,7 @@ version = "0.0.1"
 description = "Retrack backend: ingest, recall, workers, pipelines"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.143.3",
     "psycopg[binary]>=3.3.6",
 ]
 

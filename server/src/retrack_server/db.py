@@ -38,3 +38,8 @@ def increment_usage(
         "select private.increment_usage(%s, %s, %s, %s)",
         (runs_captured, recalls_served, distillations, tokens_processed),
     )
+
+
+def enqueue_run(conn: psycopg.Connection, run_id: UUID) -> int:
+    """Queue a stored run of the current project for processing. Returns the message id."""
+    return conn.execute("select private.enqueue_run(%s)", (run_id,)).fetchone()[0]
