@@ -23,10 +23,15 @@ def _load_dotenv() -> None:
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             name, _, value = line.partition("=")
-            os.environ.setdefault(name.strip(), value.strip())
+            if name.strip() not in _NEVER_IN_TESTS:
+                os.environ.setdefault(name.strip(), value.strip())
 
 
+# Tests must never spend real LLM credits: the key is not loaded, even if exported.
+_NEVER_IN_TESTS = ("ANTHROPIC_API_KEY",)
 _load_dotenv()
+for _name in _NEVER_IN_TESTS:
+    os.environ.pop(_name, None)
 
 
 @pytest.fixture
