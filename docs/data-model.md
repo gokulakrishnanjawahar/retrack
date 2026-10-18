@@ -6,7 +6,7 @@ All tables carrying customer data have `project_id` and row-level security (RLS)
 | Table | Key fields |
 |---|---|
 | organizations | id, name, created_at |
-| projects | id, org_id, name, region, retention_days, created_at |
+| projects | id, org_id, name, region, retention_days, trusted_tools text[], task_trusted bool, created_at |
 | agents | id, project_id, name, framework (e.g. langgraph), created_at |
 | api_keys | id, project_id, prefix (shown to user, e.g. `rtk_live_ab12`), key_hash, name, created_at, last_used_at, revoked_at |
 | members | org_id, user_id, role |
@@ -16,8 +16,16 @@ API keys: format `rtk_live_<48 hex>` (or `rtk_test_`); show once; store only HMA
 ## Runs
 | Table | Key fields |
 |---|---|
-| runs | id (client-generated, idempotency key; primary key is (project_id, id) so tenants never collide), project_id, agent_id, task_text, task_embedding vector(<DIM>) (added in Phase 5), model_id, tool_versions jsonb, outcome (success / failure / unknown), outcome_source (test / feedback / event / judge), confidence, tokens_in, tokens_out, cost_usd, latency_ms, taint_level (trusted / untrusted / quarantined), holdout bool, recalled_playbook_ids uuid[], trace_uri, created_at |
+| runs | id (client-generated, idempotency key; primary key is (project_id, id) so tenants never collide), project_id, agent_id, task_text, task_embedding vector(<DIM>) (added in Phase 5), model_id, tool_versions jsonb, outcome (success / failure / unknown), outcome_source (test / feedback / event / judge), confidence, tokens_in, tokens_out, cost_usd, latency_ms, taint_level (trusted / untrusted / quarantined), holdout bool, recalled_playbook_ids uuid[], trace_uri, processed_at (set by the firewall worker), created_at |
 | steps | project_id, run_id, idx (primary key: project_id + run_id + idx), type (llm / tool), tool_name, args_hash, args_redacted jsonb, result_class, error_class, latency_ms, tokens_in, tokens_out, input_trust (trusted / untrusted) |
+
+## Queues (pgmq)
+| Queue | Message |
+|---|---|
+| runs | `{project_id, run_id}`, one per newly ingested run; added only via `private.enqueue_run` (role `retrack_api`) |
+| runs_dlq | a `runs` message plus `error` and `failed_at`, after 5 failed attempts |
+
+Only role `retrack_worker` can read or remove `runs` jobs (`private.read_run_jobs`, `complete_run_job`, `dead_letter_run_job`). The server login `retrack_server` can switch to `retrack_api` or `retrack_worker`, nothing else.
 
 ## Memory
 | Table | Key fields |

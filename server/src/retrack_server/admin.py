@@ -5,6 +5,7 @@ Runs with the admin database login (DATABASE_URL), never the server login.
     uv run retrack-admin create-project --org "Acme" --project support
     uv run retrack-admin create-key --project-id <uuid> --name ci
     uv run retrack-admin revoke-key --key-id <uuid>
+    uv run retrack-admin set-trust --project-id <uuid> --tools orders_api,billing_api
 """
 
 import argparse
@@ -48,6 +49,17 @@ def create_project(
     return CreatedProject(org_id, project_id, key)
 
 
+def set_trust(
+    conn: psycopg.Connection, project_id: UUID, tools: list[str], task_trusted: bool
+) -> None:
+    """Set which tools a project trusts and whether its task text is trusted (docs/firewall.md)."""
+    cleaned = sorted({tool.strip() for tool in tools if tool.strip()})
+    conn.execute(
+        "update public.projects set trusted_tools = %s, task_trusted = %s where id = %s",
+        (cleaned, task_trusted, project_id),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="retrack-admin")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -59,6 +71,10 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--name", default="default")
     r = commands.add_parser("revoke-key", help="revoke an API key")
     r.add_argument("--key-id", required=True, type=UUID)
+    t = commands.add_parser("set-trust", help="set trusted tools and task trust for a project")
+    t.add_argument("--project-id", required=True, type=UUID)
+    t.add_argument("--tools", default="", help="comma-separated tool names; empty trusts none")
+    t.add_argument("--task-trusted", action="store_true")
     args = parser.parse_args(argv)
 
     url, pepper = os.environ.get("DATABASE_URL"), os.environ.get("RETRACK_KEY_PEPPER")
@@ -74,6 +90,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "create-key":
             key = create_api_key(conn, args.project_id, args.name, pepper)
             print(f"key_id:  {key.id}\napi key: {key.secret}   (shown once; store it now)")
+        elif args.command == "set-trust":
+            set_trust(conn, args.project_id, args.tools.split(","), args.task_trusted)
+            print("trust settings updated")
         else:
             revoke_api_key(conn, args.key_id)
             print("revoked")

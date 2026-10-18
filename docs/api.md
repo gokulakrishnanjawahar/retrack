@@ -14,6 +14,9 @@ Authentication: `Authorization: Bearer <api_key>` on every request. The key iden
 | `GET /v1/migrations/{id}` | Per-playbook pass/fail report. |
 | `GET /v1/metrics` | Holdout-based success rate, token and cost deltas, recall hit rate, for a time range. |
 
+## Internal routes
+`POST /internal/drain`: worker entry point, called every minute by Supabase Cron. Requires header `X-Retrack-Worker-Secret` (env `RETRACK_WORKER_SECRET`, also in Supabase Vault); returns 503 when not configured and never accepts API keys. Response: `{"processed": n, "retrying": n, "dead_lettered": n}`.
+
 ## Run ingest request (approved 2026-10-17)
 One run = one finished agent task, sent by the SDK after the run. Fields describe the **customer's** agent (its model, its tools), not Retrack.
 ```json
@@ -31,7 +34,7 @@ One run = one finished agent task, sent by the SDK after the run. Fields describ
   ]
 }
 ```
-Limits: request body at most 1 MB (413), at most 500 steps (422). Until the Phase 3 firewall, the server stores only a hash of `args`, never raw values. `outcome_hint.source` is one of `test`, `feedback`, `event`.
+Limits: request body at most 1 MB (413), at most 500 steps (422). The server redacts secrets and personal data in `task` and `args` before storing them. `outcome_hint.source` is one of `test`, `feedback`, `event`.
 
 Response `202`: `{"id": "...", "duplicate": false}`; `duplicate` is true when the run id was already stored for this project.
 

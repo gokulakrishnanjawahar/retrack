@@ -1,5 +1,6 @@
 """Retrack HTTP API (FastAPI). Public routes live under /v1."""
 
+import hmac
 import threading
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
@@ -20,6 +21,7 @@ from retrack_server.api_keys import verify_api_key
 from retrack_server.config import Settings
 from retrack_server.ingest import store_run
 from retrack_server.schemas import MAX_BODY_BYTES, RunIn
+from retrack_server.worker import drain
 
 _pool: ConnectionPool | None = None
 _pool_lock = threading.Lock()
@@ -124,3 +126,26 @@ async def ingest_run(
 
     duplicate = await run_in_threadpool(store_run, conn, project_id, run)
     return JSONResponse({"id": str(run.id), "duplicate": duplicate}, status_code=202)
+
+
+@app.post("/internal/drain")
+async def internal_drain(
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    x_retrack_worker_secret: Annotated[str | None, Header()] = None,
+) -> JSONResponse:
+    """Worker entry point, called by Supabase Cron. Never accepts customer API keys."""
+    if not settings.worker_secret:
+        raise ApiError(503, "not_configured", "worker routes are not configured")
+    if not x_retrack_worker_secret or not hmac.compare_digest(
+        x_retrack_worker_secret.encode(), settings.worker_secret.encode()
+    ):
+        raise ApiError(401, "unauthorized", "missing or invalid worker secret")
+    result = await run_in_threadpool(drain, conn)
+    return JSONResponse(
+        {
+            "processed": result.processed,
+            "retrying": result.retrying,
+            "dead_lettered": result.dead_lettered,
+        }
+    )

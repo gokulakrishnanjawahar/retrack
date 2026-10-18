@@ -177,3 +177,27 @@ def test_pooled_connections_come_back_clean(project, server_url):
         ).fetchone()
     assert user == "retrack_server"
     assert project_setting in (None, "")
+
+
+def test_queued_run_is_processed_by_the_drain_endpoint(admin, project, server_url):
+    project_id, secret = project
+    rt = Retrack(agent="e2e-agent", api_key=secret, base_url=server_url)
+    build_graph().invoke(
+        {"messages": [HumanMessage("Refund order #9 for a@b.co")]},
+        config={"callbacks": [rt.callback()]},
+    )
+    assert rt.flush(timeout=10)
+
+    response = httpx.post(
+        f"{server_url}/internal/drain",
+        headers={"X-Retrack-Worker-Secret": os.environ["RETRACK_WORKER_SECRET"]},
+        timeout=120,
+    )
+    assert response.status_code == 200
+
+    task, taint, processed = admin.execute(
+        "select task_text, taint_level, processed_at is not null from public.runs"
+        " where project_id = %s",
+        (project_id,),
+    ).fetchone()
+    assert (task, taint, processed) == ("Refund order #9 for <EMAIL>", "untrusted", True)

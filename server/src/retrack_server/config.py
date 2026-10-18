@@ -8,6 +8,8 @@ from dataclasses import dataclass
 class Settings:
     database_url: str
     key_pepper: str
+    # Shared secret for /internal/* worker routes; those routes are disabled without it.
+    worker_secret: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -17,4 +19,5 @@ class Settings:
         return cls(
             database_url=os.environ["SERVER_DATABASE_URL"],
             key_pepper=os.environ["RETRACK_KEY_PEPPER"],
+            worker_secret=os.environ.get("RETRACK_WORKER_SECRET") or None,
         )
