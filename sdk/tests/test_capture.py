@@ -177,3 +177,10 @@ def test_capture_failure_never_reaches_the_agent(rt, monkeypatch):
     monkeypatch.setattr(rt._sender, "submit", broken_submit)
     result = run_agent(rt)
     assert result["result"] == "order 123: damaged"
+
+
+def test_secrets_never_leave_the_process(rt, captured):
+    run_agent(rt, task="Refund using key sk_live_51HxAbCdEfGhIjKlMnOpQr")
+    rt.flush(timeout=2)
+    assert captured[0]["task"] == "Refund using key <SECRET>"
+    assert "sk_live_51HxAbCdEfGhIjKlMnOpQr" not in str(captured[0])

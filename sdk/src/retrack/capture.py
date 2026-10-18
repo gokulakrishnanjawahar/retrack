@@ -17,6 +17,8 @@ from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 
+from retrack.redact import redact_secrets
+
 logger = logging.getLogger("retrack")
 
 MAX_STEPS = 500
@@ -176,7 +178,7 @@ class RetrackCallbackHandler(BaseCallbackHandler):
         payload = {
             "id": str(run.id),
             "agent": self._agent,
-            "task": run.task,
+            "task": redact_secrets(run.task),
             "model_id": self._model_id or run.model_id or "unknown",
             "tool_versions": self._tool_versions,
             "tokens_in": run.tokens_in,
@@ -240,7 +242,12 @@ class RetrackCallbackHandler(BaseCallbackHandler):
         args = inputs if isinstance(inputs, dict) else {"input": input_str}
         trust = "trusted" if name in self._trusted_tools else "untrusted"
         self._open_step(
-            run_id, parent_run_id, "tool", tool_name=name, args=_json_safe(args), input_trust=trust
+            run_id,
+            parent_run_id,
+            "tool",
+            tool_name=name,
+            args=redact_secrets(_json_safe(args)),
+            input_trust=trust,
         )
 
     @_safe
