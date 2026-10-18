@@ -1,0 +1,16 @@
+# Never upload secrets or local state to Vercel.
+.env
+.env.*
+!.env.example
+.git
+.venv
+**/__pycache__
+**/.pytest_cache
+.ruff_cache
+supabase
+dashboard
+benchmarks
+tests
+sdk/tests
+server/tests
+docs

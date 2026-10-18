@@ -12,3 +12,4 @@ node_modules/
 supabase/.temp/
 dist/
 *.egg-info/
+.vercel/

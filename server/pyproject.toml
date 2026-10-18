@@ -8,6 +8,12 @@ dependencies = [
     "psycopg[binary]>=3.3.6",
 ]
 
+[project.scripts]
+retrack-admin = "retrack_server.admin:main"
+
+[tool.vercel]
+entrypoint = "main:app"
+
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]
 build-backend = "uv_build"
