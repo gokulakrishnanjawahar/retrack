@@ -146,3 +146,34 @@ def test_sdk_never_raises_when_server_is_down():
     )
     assert result["messages"][-1].content == "done"
     assert rt.flush(timeout=5)
+
+
+def test_connections_are_reused_across_requests(project, server_url):
+    from retrack_server.app import get_pool, get_settings
+
+    _, secret = project
+    headers = {"Authorization": f"Bearer {secret}"}
+    with httpx.Client(base_url=server_url, headers=headers) as client:
+        client.post(
+            "/v1/runs", json={"id": str(uuid.uuid4()), "agent": "a", "task": "t", "model_id": "m"}
+        )
+        opened_before = get_pool(get_settings()).get_stats().get("connections_num", 0)
+        for _ in range(5):
+            payload = {"id": str(uuid.uuid4()), "agent": "a", "task": "t", "model_id": "m"}
+            assert client.post("/v1/runs", json=payload).status_code == 202
+    opened_after = get_pool(get_settings()).get_stats().get("connections_num", 0)
+    assert opened_after == opened_before
+
+
+def test_pooled_connections_come_back_clean(project, server_url):
+    from retrack_server.app import get_pool, get_settings
+
+    _, secret = project
+    payload = {"id": str(uuid.uuid4()), "agent": "a", "task": "t", "model_id": "m"}
+    httpx.post(f"{server_url}/v1/runs", json=payload, headers={"Authorization": f"Bearer {secret}"})
+    with get_pool(get_settings()).connection() as conn:
+        user, project_setting = conn.execute(
+            "select current_user, current_setting('app.project_id', true)"
+        ).fetchone()
+    assert user == "retrack_server"
+    assert project_setting in (None, "")

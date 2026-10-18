@@ -1,6 +1,8 @@
 """Retrack HTTP API (FastAPI). Public routes live under /v1."""
 
-from collections.abc import Iterator
+import threading
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
@@ -10,6 +12,7 @@ from fastapi import Depends, FastAPI, Header, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from psycopg_pool import ConnectionPool
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException
 
@@ -18,7 +21,21 @@ from retrack_server.config import Settings
 from retrack_server.ingest import store_run
 from retrack_server.schemas import MAX_BODY_BYTES, RunIn
 
-app = FastAPI(title="Retrack", docs_url=None, redoc_url=None, openapi_url=None)
+_pool: ConnectionPool | None = None
+_pool_lock = threading.Lock()
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    yield
+    global _pool
+    with _pool_lock:
+        if _pool is not None:
+            _pool.close()
+            _pool = None
+
+
+app = FastAPI(title="Retrack", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 
 
 class ApiError(Exception):
@@ -50,9 +67,27 @@ def get_settings() -> Settings:
     return Settings.from_env()
 
 
+def get_pool(settings: Settings) -> ConnectionPool:
+    """One connection pool per server instance, opened on first use and reused by requests."""
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ConnectionPool(
+                settings.database_url,
+                # Supabase's transaction pooler does not support prepared statements.
+                kwargs={"prepare_threshold": None},
+                min_size=1,
+                max_size=5,
+                # Serverless instances sleep between requests; replace dead connections on checkout.
+                check=ConnectionPool.check_connection,
+                max_idle=300,
+                open=True,
+            )
+        return _pool
+
+
 def get_conn(settings: Annotated[Settings, Depends(get_settings)]) -> Iterator[psycopg.Connection]:
-    # prepare_threshold=None: Supabase's transaction pooler does not support prepared statements.
-    with psycopg.connect(settings.database_url, prepare_threshold=None) as conn:
+    with get_pool(settings).connection() as conn:
         yield conn
 
 
