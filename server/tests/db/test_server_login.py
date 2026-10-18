@@ -27,6 +27,11 @@ def test_server_login_can_switch_to_api_role(server_conn):
     assert server_conn.execute("select current_user").fetchone()[0] == "retrack_api"
 
 
+def test_server_login_can_switch_to_worker_role(server_conn):
+    server_conn.execute("set local role retrack_worker")
+    assert server_conn.execute("select current_user").fetchone()[0] == "retrack_worker"
+
+
 def test_server_login_cannot_switch_to_admin_roles(server_conn):
     for role in ("postgres", "service_role"):
         with (

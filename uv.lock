@@ -903,6 +903,7 @@ version = "0.0.1"
 source = { editable = "server" }
 dependencies = [
     { name = "fastapi" },
+    { name = "langgraph" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
 ]
@@ -910,6 +911,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.143.3" },
+    { name = "langgraph", specifier = ">=1.2.16" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "psycopg-pool", specifier = ">=3.3.3" },
 ]

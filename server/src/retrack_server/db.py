@@ -43,3 +43,12 @@ def increment_usage(
 def enqueue_run(conn: psycopg.Connection, run_id: UUID) -> int:
     """Queue a stored run of the current project for processing. Returns the message id."""
     return conn.execute("select private.enqueue_run(%s)", (run_id,)).fetchone()[0]
+
+
+@contextmanager
+def worker_scope(conn: psycopg.Connection) -> Iterator[None]:
+    """Run the enclosed queries as `retrack_worker`, which may only use the queue functions."""
+    with conn.transaction():
+        conn.execute("set local role retrack_worker")
+        yield
+        conn.execute("reset role")
