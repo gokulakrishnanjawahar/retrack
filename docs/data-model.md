@@ -19,6 +19,13 @@ API keys: format `rtk_live_<48 hex>` (or `rtk_test_`); show once; store only HMA
 | runs | id (client-generated, idempotency key; primary key is (project_id, id) so tenants never collide), project_id, agent_id, task_text, task_embedding vector(<DIM>) (added in Phase 5), model_id, tool_versions jsonb, outcome (success / failure / unknown), outcome_source (test / feedback / event / judge), confidence, tokens_in, tokens_out, cost_usd, latency_ms, taint_level (trusted / untrusted / quarantined), holdout bool, recalled_playbook_ids uuid[], trace_uri, processed_at (set by the firewall worker), created_at |
 | steps | project_id, run_id, idx (primary key: project_id + run_id + idx), type (llm / tool), tool_name, args_hash, args_redacted jsonb, result_class, error_class, latency_ms, tokens_in, tokens_out, input_trust (trusted / untrusted) |
 
+## Outcomes
+| Table | Key fields |
+|---|---|
+| outcome_signals | id, project_id, run_id, source (test / event / feedback / judge), outcome (success / failure), confidence, detail jsonb (redacted; judge stores its reason and model), seq (insertion order), created_at |
+
+`runs.outcome / outcome_source / confidence` hold the winning signal (see `api.md`, Feedback).
+
 ## Queues (pgmq)
 | Queue | Message |
 |---|---|
@@ -45,7 +52,7 @@ Only role `retrack_worker` can read or remove `runs` jobs (`private.read_run_job
 ## Usage metering
 | Table | Key fields |
 |---|---|
-| usage_daily | project_id, day, runs_captured, recalls_served, distillations, tokens_processed (primary key: project_id + day) |
+| usage_daily | project_id, day, runs_captured, recalls_served, distillations, tokens_processed, llm_input_tokens, llm_output_tokens (Retrack's own LLM spend) (primary key: project_id + day) |
 
 Increment with an upsert. Raw `runs` rows (with timestamps) let usage history be rebuilt if metering changes later, so keep them for the project's retention period.
 

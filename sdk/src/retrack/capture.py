@@ -133,6 +133,7 @@ class RetrackCallbackHandler(BaseCallbackHandler):
         self._lock = threading.Lock()
         self._runs: dict[UUID, _Run] = {}
         self._root_of: dict[UUID, UUID] = {}
+        self.last_run_id: UUID | None = None
 
     # Run boundaries -------------------------------------------------------------------
 
@@ -147,6 +148,7 @@ class RetrackCallbackHandler(BaseCallbackHandler):
     def on_chain_start(self, serialized, inputs, *, run_id, parent_run_id=None, **kwargs):
         with self._lock:
             if parent_run_id is None:
+                self.last_run_id = run_id
                 task = self._task or derive_task(inputs)
                 self._runs[run_id] = _Run(run_id, task[:MAX_TASK_CHARS], time.monotonic())
                 self._root_of[run_id] = run_id

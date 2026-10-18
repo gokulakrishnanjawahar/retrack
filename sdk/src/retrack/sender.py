@@ -27,7 +27,7 @@ class BackgroundSender:
         timeout_seconds: float = 5.0,
         transport: httpx.BaseTransport | None = None,
     ):
-        self._buffer: deque[dict[str, Any]] = deque(maxlen=max_buffer)
+        self._buffer: deque[tuple[str, dict[str, Any]]] = deque(maxlen=max_buffer)
         self._cond = threading.Condition()
         self._in_flight = False
         self._closed = False
@@ -47,14 +47,14 @@ class BackgroundSender:
     def buffered(self) -> int:
         return len(self._buffer)
 
-    def submit(self, payload: dict[str, Any]) -> None:
+    def submit(self, payload: dict[str, Any], path: str = "/v1/runs") -> None:
         with self._cond:
             if self._closed:
                 return
             if len(self._buffer) == self._buffer.maxlen:
                 self.dropped += 1
                 logger.warning("retrack: buffer full, dropping oldest run")
-            self._buffer.append(payload)
+            self._buffer.append((path, payload))
             self._cond.notify_all()
 
     def flush(self, timeout: float = 5.0) -> bool:
@@ -84,10 +84,10 @@ class BackgroundSender:
                     self._cond.wait()
                 if self._closed:
                     return
-                payload = self._buffer.popleft()
+                path, payload = self._buffer.popleft()
                 self._in_flight = True
             try:
-                self._send(payload)
+                self._send(path, payload)
             except Exception:  # never let the sender thread die
                 logger.exception("retrack: unexpected error sending run")
             finally:
@@ -95,10 +95,10 @@ class BackgroundSender:
                     self._in_flight = False
                     self._cond.notify_all()
 
-    def _send(self, payload: dict[str, Any]) -> None:
+    def _send(self, path: str, payload: dict[str, Any]) -> None:
         for attempt in range(self._max_attempts):
             try:
-                response = self._client.post("/v1/runs", json=payload)
+                response = self._client.post(path, json=payload)
             except httpx.HTTPError as exc:
                 logger.debug("retrack: send failed (%s)", exc)
             else:
@@ -106,12 +106,15 @@ class BackgroundSender:
                     return
                 if response.status_code != 429 and response.status_code < 500:
                     logger.warning(
-                        "retrack: run %s rejected (%s): %s",
-                        payload.get("id"),
+                        "retrack: %s for %s rejected (%s): %s",
+                        path,
+                        payload.get("id") or payload.get("run_id"),
                         response.status_code,
                         response.text[:500],
                     )
                     return
             if attempt + 1 < self._max_attempts:
                 time.sleep(self._backoff * 2**attempt)
-        logger.warning("retrack: giving up on run %s", payload.get("id"))
+        logger.warning(
+            "retrack: giving up on %s for %s", path, payload.get("id") or payload.get("run_id")
+        )

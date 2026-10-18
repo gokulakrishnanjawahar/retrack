@@ -1,4 +1,5 @@
-"""Background worker: drains the `runs` queue and runs the pipelines on each job.
+"""Background worker: drains the `runs` queue and runs the pipelines on each job
+(firewall, then scoring).
 
 Called by POST /internal/drain, which Supabase Cron triggers every minute.
 """
@@ -12,6 +13,8 @@ import psycopg
 
 from retrack_server.db import worker_scope
 from retrack_server.firewall import process_run
+from retrack_server.llm import LLMClient
+from retrack_server.scoring import score_run
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,7 @@ def drain(
     visibility_seconds: int = VISIBILITY_SECONDS,
     max_attempts: int = MAX_ATTEMPTS,
     time_budget_seconds: float = TIME_BUDGET_SECONDS,
+    llm: LLMClient | None = None,
 ) -> DrainResult:
     """Process ready jobs until the queue is empty or the time budget is used up."""
     result = DrainResult()
@@ -76,6 +80,7 @@ def drain(
             try:
                 with conn.transaction():
                     process_run(conn, job.project_id, job.run_id)
+                    score_run(conn, job.project_id, job.run_id, llm)
                     complete_job(conn, job.msg_id)
                 result.processed += 1
             except Exception as exc:

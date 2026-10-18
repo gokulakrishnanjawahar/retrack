@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 from retrack_server.db import enqueue_run, increment_usage, project_scope
 from retrack_server.redaction import redact_text, redact_value
 from retrack_server.schemas import RunIn
+from retrack_server.scoring import add_signal
 
 
 def args_hash(args: dict[str, Any]) -> str:
@@ -42,9 +43,8 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
         agent_id = _agent_id(conn, project_id, run.agent)
         inserted = conn.execute(
             "insert into public.runs (project_id, id, agent_id, task_text, model_id,"
-            " tool_versions, outcome, outcome_source, tokens_in, tokens_out, cost_usd,"
-            " latency_ms)"
-            " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            " tool_versions, tokens_in, tokens_out, cost_usd, latency_ms)"
+            " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             " on conflict (project_id, id) do nothing returning id",
             (
                 project_id,
@@ -53,8 +53,6 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
                 task_text,
                 run.model_id,
                 Jsonb(run.tool_versions),
-                hint.outcome if hint else "unknown",
-                hint.source if hint else None,
                 run.tokens_in,
                 run.tokens_out,
                 run.cost_usd,
@@ -89,6 +87,8 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
                     for step, args in zip(run.steps, redacted_args, strict=True)
                 ],
             )
+        if hint:
+            add_signal(conn, project_id, run.id, hint.source, hint.outcome)
         enqueue_run(conn, run.id)
         increment_usage(conn, runs_captured=1, tokens_processed=run.tokens_in + run.tokens_out)
     return False

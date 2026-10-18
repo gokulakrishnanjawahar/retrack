@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from retrack.capture import RetrackCallbackHandler
+from retrack.redact import redact_secrets
 from retrack.sender import BackgroundSender
 
 logger = logging.getLogger("retrack")
@@ -65,6 +66,31 @@ class Retrack:
             tool_versions=self._tool_versions,
             trusted_tools=self._trusted_tools,
         )
+
+    def feedback(
+        self,
+        run_id: Any,
+        *,
+        outcome: str,
+        source: str = "feedback",
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        """Report a run's outcome later: `source` is "test", "event" or "feedback".
+
+        Get the run id from the callback handler (`handler.last_run_id`). Sent in the
+        background like runs; never raises.
+        """
+        try:
+            payload = {
+                "run_id": str(run_id),
+                "outcome": outcome,
+                "source": source,
+                "detail": redact_secrets(detail or {}),
+            }
+            if self._sender:
+                self._sender.submit(payload, path="/v1/feedback")
+        except Exception:
+            logger.exception("retrack: could not queue feedback")
 
     def flush(self, timeout: float = 5.0) -> bool:
         """Wait until captured runs are sent. Returns False on timeout."""

@@ -26,6 +26,7 @@ Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit lo
 - Phase 1: done (schema, RLS, API keys).
 - Phase 2: done (capture SDK, `POST /v1/runs`, queue, deployed at `https://retrack-api.vercel.app` in `bom1`).
 - Phase 3: done (redaction at ingest, taint tracking, promotion rule, workers via Supabase Cron → `/internal/drain`, verified live).
+- Phase 4: built and tested locally with a fake LLM (outcome signals, judge, `POST /v1/feedback`, SDK `rt.feedback`); live deploy and the one-time real-model check need Gokul's approval to spend credits.
 
 ## Why this order
 - **Firewall is split.** Redaction and the taint gate (Phase 3) come before anything is embedded or distilled, so secrets never reach vectors and rule 8 in `CLAUDE.md` holds from the first playbook. The LLM-heavy checks (Phase 8) land before any external user relies on recall.

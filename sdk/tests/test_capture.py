@@ -184,3 +184,45 @@ def test_secrets_never_leave_the_process(rt, captured):
     rt.flush(timeout=2)
     assert captured[0]["task"] == "Refund using key <SECRET>"
     assert "sk_live_51HxAbCdEfGhIjKlMnOpQr" not in str(captured[0])
+
+
+def test_handler_exposes_the_last_run_id(rt, captured):
+    handler = rt.callback()
+    build_graph().invoke(
+        {"messages": [HumanMessage("task")], "result": ""}, config={"callbacks": [handler]}
+    )
+    rt.flush(timeout=2)
+    assert str(handler.last_run_id) == captured[0]["id"]
+
+
+def test_feedback_is_sent_after_the_run(rt, monkeypatch):
+    sent = []
+
+    def handler(request):
+        sent.append((request.url.path, json.loads(request.content)))
+        return httpx.Response(202)
+
+    rt2 = Retrack(
+        api_key=API_KEY,
+        agent="support-agent",
+        base_url="https://retrack.test",
+        transport=httpx.MockTransport(handler),
+    )
+    cb = rt2.callback()
+    build_graph().invoke(
+        {"messages": [HumanMessage("task")], "result": ""}, config={"callbacks": [cb]}
+    )
+    rt2.feedback(cb.last_run_id, outcome="success", source="test", detail={"suite": "smoke"})
+    assert rt2.flush(timeout=2)
+    assert [path for path, _ in sent] == ["/v1/runs", "/v1/feedback"]
+    assert sent[1][1] == {
+        "run_id": str(cb.last_run_id),
+        "outcome": "success",
+        "source": "test",
+        "detail": {"suite": "smoke"},
+    }
+
+
+def test_feedback_never_raises_even_with_bad_input():
+    rt = Retrack(agent="support-agent")  # capture disabled: no key or URL
+    rt.feedback("not-a-uuid", outcome="maybe", source="judge")

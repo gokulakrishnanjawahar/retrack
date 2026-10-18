@@ -137,6 +137,12 @@ def test_outcome_hint_is_recorded(client, conn, api_key, run_payload):
     post_run(client, api_key, payload)
     row = stored_run(conn, payload["id"])[0]
     assert (row[5], row[6]) == ("success", "test")
+    confidence, signal_count = conn.execute(
+        "select r.confidence, (select count(*) from public.outcome_signals s where s.run_id = r.id)"
+        " from public.runs r where r.id = %s",
+        (payload["id"],),
+    ).fetchone()
+    assert (confidence, signal_count) == (1.0, 1)
 
 
 def test_agent_is_created_once_and_reused(client, conn, api_key, tenants, run_payload):

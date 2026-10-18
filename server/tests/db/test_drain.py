@@ -115,3 +115,18 @@ def test_job_failing_too_often_moves_to_dead_letter_queue(conn, tenants):
         "select message from pgmq.q_runs_dlq where message->>'run_id' = %s", (run_id,)
     ).fetchone()[0]
     assert dead["error"].startswith("LookupError")
+
+
+def test_drain_scores_runs_with_the_judge_when_enabled(conn, tenants):
+    from retrack_server.llm import FakeLLM
+
+    a, _ = tenants
+    from retrack_server.db import enqueue_run, project_scope
+
+    with project_scope(conn, a.project_id):
+        enqueue_run(conn, a.run_id)
+    llm = FakeLLM([{"outcome": "success", "confidence": 0.9, "reason": "done"}] * 1000)
+    drain(conn, llm=llm, time_budget_seconds=20)
+    assert conn.execute(
+        "select outcome, outcome_source from public.runs where id = %s", (a.run_id,)
+    ).fetchone() == ("success", "judge")

@@ -19,8 +19,12 @@ from starlette.exceptions import HTTPException
 
 from retrack_server.api_keys import verify_api_key
 from retrack_server.config import Settings
+from retrack_server.db import project_scope
 from retrack_server.ingest import store_run
-from retrack_server.schemas import MAX_BODY_BYTES, RunIn
+from retrack_server.llm import LLMClient, llm_from_settings
+from retrack_server.redaction import redact_value
+from retrack_server.schemas import MAX_BODY_BYTES, MAX_FEEDBACK_BYTES, FeedbackIn, RunIn
+from retrack_server.scoring import add_signal
 from retrack_server.worker import drain
 
 _pool: ConnectionPool | None = None
@@ -67,6 +71,12 @@ async def _http_error(_: Request, exc: HTTPException) -> JSONResponse:
 @lru_cache
 def get_settings() -> Settings:
     return Settings.from_env()
+
+
+@lru_cache
+def get_llm(settings: Settings) -> LLMClient | None:
+    """Retrack's own LLM, or None unless RETRACK_LLM_ENABLED=true and a key is set."""
+    return llm_from_settings(settings)
 
 
 def get_pool(settings: Settings) -> ConnectionPool:
@@ -141,11 +151,58 @@ async def internal_drain(
         x_retrack_worker_secret.encode(), settings.worker_secret.encode()
     ):
         raise ApiError(401, "unauthorized", "missing or invalid worker secret")
-    result = await run_in_threadpool(drain, conn)
+    result = await run_in_threadpool(drain, conn, llm=get_llm(settings))
     return JSONResponse(
         {
             "processed": result.processed,
             "retrying": result.retrying,
             "dead_lettered": result.dead_lettered,
         }
+    )
+
+
+@app.post("/v1/feedback", status_code=202)
+async def record_feedback(
+    request: Request,
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+) -> JSONResponse:
+    """Attach a late outcome signal (test result, business event, user feedback) to a run."""
+    body = await request.body()
+    if len(body) > MAX_FEEDBACK_BYTES:
+        raise ApiError(413, "payload_too_large", f"request body exceeds {MAX_FEEDBACK_BYTES} bytes")
+    try:
+        feedback = FeedbackIn.model_validate_json(body)
+    except ValidationError as exc:
+        raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
+
+    def store() -> tuple | None:
+        detail, _ = redact_value(feedback.detail)
+        with project_scope(conn, project_id):
+            exists = conn.execute(
+                "select 1 from public.runs where project_id = %s and id = %s",
+                (project_id, feedback.run_id),
+            ).fetchone()
+            if exists is None:
+                return None
+            add_signal(
+                conn, project_id, feedback.run_id, feedback.source, feedback.outcome, None, detail
+            )
+            return conn.execute(
+                "select outcome, outcome_source, confidence from public.runs"
+                " where project_id = %s and id = %s",
+                (project_id, feedback.run_id),
+            ).fetchone()
+
+    row = await run_in_threadpool(store)
+    if row is None:
+        raise ApiError(404, "run_not_found", "no run with this id in this project")
+    return JSONResponse(
+        {
+            "run_id": str(feedback.run_id),
+            "outcome": row[0],
+            "outcome_source": row[1],
+            "confidence": row[2],
+        },
+        status_code=202,
     )

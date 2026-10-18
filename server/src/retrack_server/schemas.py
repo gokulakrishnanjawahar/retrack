@@ -50,3 +50,13 @@ class RunIn(BaseModel):
         if len(indexes) != len(set(indexes)):
             raise ValueError("step idx values must be unique")
         return self
+
+
+MAX_FEEDBACK_BYTES = 16_000
+
+
+class FeedbackIn(BaseModel):
+    run_id: UUID
+    outcome: Literal["success", "failure"]
+    source: Literal["test", "feedback", "event"]
+    detail: dict[str, Any] = Field(default_factory=dict)

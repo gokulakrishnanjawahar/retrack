@@ -38,6 +38,15 @@ Limits: request body at most 1 MB (413), at most 500 steps (422). The server red
 
 Response `202`: `{"id": "...", "duplicate": false}`; `duplicate` is true when the run id was already stored for this project.
 
+## Feedback request (Phase 4)
+`POST /v1/feedback` attaches a late outcome signal to a run of the key's project.
+```json
+{"run_id": "uuid", "outcome": "success", "source": "test", "detail": {"suite": "smoke"}}
+```
+`source` is `test` (confidence 1.0), `event` (0.9) or `feedback` (0.8); `judge` is reserved for Retrack. `detail` is redacted and stored. Response `202`: `{"run_id", "outcome", "outcome_source", "confidence"}` — the run's resolved outcome. `404 run_not_found` if the run is not in the project. Body at most 16 KB.
+
+Resolution: the highest-ranked source wins (test > event > feedback > judge); within a source, the latest signal wins. The AI judge runs only when a run has no signal, at most once, with confidence capped at 0.7 (0.5 for untrusted runs).
+
 ## Recall request (sketch)
 ```json
 {
@@ -72,6 +81,7 @@ rt = Retrack(api_key=os.environ["RETRACK_API_KEY"], agent="support-agent")
 graph = builder.compile()
 result = graph.invoke(inputs, config={"callbacks": [rt.callback()]})  # capture
 memory = rt.recall(task=..., model_id=..., tool_versions=...)  # before task
-rt.feedback(run_id, outcome="success", source="test")
+handler = rt.callback()                                              # handler.last_run_id after a run
+rt.feedback(handler.last_run_id, outcome="success", source="test")
 ```
 Final shapes are decided during implementation; propose before changing.

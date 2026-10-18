@@ -97,3 +97,17 @@ def test_submit_after_close_is_ignored():
     sender.close(timeout=1)
     sender.submit({"id": "late"})
     assert sender.buffered == 0
+
+
+def test_custom_path_is_used():
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.path)
+        return httpx.Response(202)
+
+    sender = make_sender(handler)
+    sender.submit({"id": "r1"})
+    sender.submit({"run_id": "r1"}, path="/v1/feedback")
+    assert sender.flush(timeout=2)
+    assert seen == ["/v1/runs", "/v1/feedback"]
