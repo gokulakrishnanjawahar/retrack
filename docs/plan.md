@@ -21,6 +21,11 @@ Phase order, agreed with Gokul on 2026-10-15. Blocks refer to `features.md`; eac
 
 Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit logs.
 
+## Status
+- Phase 0: done.
+- Phase 1: done (schema, RLS, API keys).
+- Phase 2: done (capture SDK, `POST /v1/runs`, queue, deployed at `https://retrack-api.vercel.app` in `bom1`).
+
 ## Why this order
 - **Firewall is split.** Redaction and the taint gate (Phase 3) come before anything is embedded or distilled, so secrets never reach vectors and rule 8 in `CLAUDE.md` holds from the first playbook. The LLM-heavy checks (Phase 8) land before any external user relies on recall.
 - **Phase 7 is the MVP.** It proves the core claim (memory makes agents cheaper and more reliable) with numbers.
