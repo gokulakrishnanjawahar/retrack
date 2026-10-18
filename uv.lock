@@ -904,6 +904,9 @@ requires-dist = [
 name = "retrack-workspace"
 version = "0.0.0"
 source = { virtual = "." }
+dependencies = [
+    { name = "retrack-server" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -916,6 +919,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "retrack-server", editable = "server" }]
 
 [package.metadata.requires-dev]
 dev = [

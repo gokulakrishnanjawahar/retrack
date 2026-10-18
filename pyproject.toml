@@ -2,6 +2,9 @@
 name = "retrack-workspace"
 version = "0.0.0"
 requires-python = ">=3.12"
+# Vercel installs the root project's dependencies from the workspace lock, so the
+# deployed server must be listed here (see docs/architecture.md, Runtime).
+dependencies = ["retrack-server"]
 
 [tool.uv]
 package = false
