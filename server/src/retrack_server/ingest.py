@@ -9,6 +9,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from retrack_server.db import enqueue_run, increment_usage, project_scope
+from retrack_server.redaction import redact_text, redact_value
 from retrack_server.schemas import RunIn
 
 
@@ -34,6 +35,9 @@ def _agent_id(conn: psycopg.Connection, project_id: UUID, name: str) -> UUID:
 def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
     """Store a run for a project. Returns True if this run id was already stored."""
     hint = run.outcome_hint
+    # Redact before anything is stored: raw secrets and personal data never reach the database.
+    task_text, _ = redact_text(run.task)
+    redacted_args = [redact_value(step.args)[0] for step in run.steps]
     with project_scope(conn, project_id):
         agent_id = _agent_id(conn, project_id, run.agent)
         inserted = conn.execute(
@@ -46,7 +50,7 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
                 project_id,
                 run.id,
                 agent_id,
-                run.task,
+                task_text,
                 run.model_id,
                 Jsonb(run.tool_versions),
                 hint.outcome if hint else "unknown",
@@ -60,7 +64,6 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
         if inserted is None:
             return True
 
-        # Raw args are never stored until the Phase 3 firewall can redact them.
         with conn.cursor() as cur:
             cur.executemany(
                 "insert into public.steps (project_id, run_id, idx, type, tool_name, args_hash,"
@@ -74,8 +77,8 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
                         step.idx,
                         step.type,
                         step.tool_name,
-                        args_hash(step.args),
-                        Jsonb({}),
+                        args_hash(args),
+                        Jsonb(args),
                         step.result_class,
                         step.error_class,
                         step.latency_ms,
@@ -83,7 +86,7 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
                         step.tokens_out,
                         step.input_trust,
                     )
-                    for step in run.steps
+                    for step, args in zip(run.steps, redacted_args, strict=True)
                 ],
             )
         enqueue_run(conn, run.id)

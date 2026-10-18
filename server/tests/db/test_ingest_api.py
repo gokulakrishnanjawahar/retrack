@@ -100,19 +100,28 @@ def test_run_is_stored_in_the_keys_project(client, conn, api_key, tenants, run_p
     ]
 
 
-def test_steps_are_stored_with_args_hashed_not_raw(client, conn, api_key, run_payload):
+def test_steps_store_redacted_args_never_raw(client, conn, api_key, run_payload):
     payload = run_payload()
     post_run(client, api_key, payload)
     steps = conn.execute(
-        "select idx, type, tool_name, args_hash, args_redacted, input_trust"
+        "select idx, type, tool_name, args_hash, args_redacted"
         " from public.steps where run_id = %s order by idx",
         (payload["id"],),
     ).fetchall()
 
     assert [(s[0], s[1], s[2]) for s in steps] == [(0, "llm", None), (1, "tool", "orders_api")]
-    assert steps[1][3] and len(steps[1][3]) == 64
-    assert steps[1][4] == {}
+    assert steps[1][4] == {"order_id": "123", "api_key": "<SECRET>"}
+    assert len(steps[1][3]) == 64
     assert "sk_live_secret" not in json.dumps([list(map(str, s)) for s in steps])
+
+
+def test_task_text_is_redacted(client, conn, api_key, run_payload):
+    payload = run_payload(task="Refund order 77 for priya@example.com, card 4111 1111 1111 1111")
+    post_run(client, api_key, payload)
+    task = conn.execute(
+        "select task_text from public.runs where id = %s", (payload["id"],)
+    ).fetchone()[0]
+    assert task == "Refund order 77 for <EMAIL>, card <CARD>"
 
 
 def test_run_is_queued_and_counted(client, conn, api_key, tenants, run_payload):
