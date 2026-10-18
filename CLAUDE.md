@@ -31,6 +31,7 @@ This file is short on purpose. Before any feature work, read the relevant file i
 - **SDK auth:** per-project API keys, stored hashed.
 - **Usage metering:** simple daily counters in Postgres.
 - **Backend:** FastAPI, hosted on Vercel in `bom1` (Mumbai). Queue workers are triggered every minute by Supabase Cron calling `/internal/drain`.
+- **LLM:** Claude Haiku 5.5 behind a provider-agnostic `LLMClient`; customers may bring their own key at launch.
 - **Local development:** a dev Supabase cloud project (no Docker).
 - **Migrations:** plain SQL in `supabase/migrations/`, applied with the Supabase CLI. No ORM.
 - **Python tooling:** uv (packages, Python version), pytest, ruff.
@@ -42,7 +43,6 @@ This file is short on purpose. Before any feature work, read the relevant file i
 Do not pick any of these yourself. If a task depends on one, stop and ask. Full list and context in `docs/decisions.md`.
 
 - Embedding model (and therefore vector dimension)
-- LLM provider/model for distillation, judging and firewall classification
 - Dashboard login (Supabase Auth, custom, or Clerk)
 - Open source vs closed source, and licence
 

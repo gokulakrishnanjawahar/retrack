@@ -47,7 +47,7 @@ Supabase, region ap-south-1 (Mumbai)  │ every minute, HTTP POST with secret   
 | Building | Free | Hobby (free) | Free Supabase projects pause when inactive; Hobby is non-commercial only |
 | Launch (paying customers) | Pro (~$25/mo) | Pro (~$20/mo) | Required for commercial use and no pausing |
 
-LLM and embedding API calls (from Phase 4) are billed by the chosen provider; provider is OPEN.
+LLM calls (from Phase 4) use Claude Haiku 5.5 (about $0.0004 per judge call); customers may bring their own key at launch. Embedding provider is OPEN.
 
 ## Components
 
@@ -56,9 +56,9 @@ LLM and embedding API calls (from Phase 4) are billed by the chosen provider; pr
 | Python SDK | LangGraph callback handler for capture; pre-task recall node; optional LangGraph `BaseStore` adapter; local mode (SQLite + sqlite-vec) | Python 3.12, langgraph, httpx |
 | Ingest API | Authenticated, idempotent ingestion (run ID is the idempotency key), schema validation, backpressure; replies 202 immediately | FastAPI on Vercel (`bom1`) |
 | Job queue | Fan-out of firewall, scoring, distillation and embedding jobs; retries; dead-letter queue | pgmq (decided); drained by `/internal/drain`, triggered every minute by Supabase Cron |
-| Firewall pipeline | Taint propagation, secret and PII scanning, injection classifier, tool-choice anomaly checks, quarantine | LangGraph; LLM OPEN |
-| Scorer pipeline | Outcome from tests, feedback, business events, then judge model as fallback; attaches confidence | LangGraph; LLM OPEN |
-| Distiller pipeline | Playbook and failure-signature extraction, dedupe/merge, versioning | LangGraph; LLM OPEN |
+| Firewall pipeline | Taint propagation, secret and PII scanning, injection classifier, tool-choice anomaly checks, quarantine | LangGraph; Claude Haiku 5.5 via `LLMClient` |
+| Scorer pipeline | Outcome from tests, feedback, business events, then judge model as fallback; attaches confidence | LangGraph; Claude Haiku 5.5 via `LLMClient` |
+| Distiller pipeline | Playbook and failure-signature extraction, dedupe/merge, versioning | LangGraph; Claude Haiku 5.5 via `LLMClient` |
 | Store | All structured data and vector index | Supabase Postgres + pgvector (decided) |
 | Recall API | Hybrid search (vector + full-text + metadata filters), rerank, confidence gate | FastAPI on Vercel (`bom1`) |
 | Regression runner | Replays eval cases; model-migration report | Python CLI + GitHub Action |

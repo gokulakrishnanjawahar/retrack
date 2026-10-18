@@ -23,13 +23,14 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Backend framework | FastAPI (Python) | Portable across hosts |
 | Hosting | Vercel, region `bom1` (Mumbai), same region as the database | Hobby (free) while building; Pro required at launch (commercial use) |
 | Worker trigger | Supabase Cron (`pg_cron` + `pg_net`) calls a secret-protected `/internal/drain` endpoint every minute | Free; defined in SQL migrations. GitHub Actions and Vercel Hobby cron rejected (too slow) |
+| LLM (judge, distiller, firewall classifier) | Claude Haiku 5.5 (Anthropic), low effort by default; raise effort per job only if evals show it helps. All calls go through a provider-agnostic `LLMClient` interface | Decided 2026-10-19. Prompts stay under 100k tokens (cheaper price tier). Compared against Gemini 2.5 Flash-Lite, which is lower quality and being retired |
+| LLM keys at launch | Customers can bring their own LLM key (encrypted, never logged); Retrack's own key is used for development and testing | Testing budget about $5 |
 | ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)
 | Area | Options under consideration | Blocks |
 |---|---|---|
 | Embedding model | To analyse (quality, cost, dimension, provider) | Vector dimension, Blocks D and E |
-| LLM for distillation, judging, firewall | Proposed default Claude Haiku 5.5 behind a provider-agnostic interface; not confirmed | Blocks C, D, G |
 | Dashboard login | Supabase Auth, custom, or Clerk | Block L |
 | Open vs closed source, licence | Decide after the product is built; repo stays private until then | Repo structure, licence file |
 | Object storage for traces | Supabase Storage likely | Trace archive |

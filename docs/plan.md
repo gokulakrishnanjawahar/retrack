@@ -8,7 +8,7 @@ Phase order, agreed with Gokul on 2026-10-15. Blocks refer to `features.md`; eac
 | 1. Foundation | Supabase schema (tenancy, api_keys, runs, steps, usage_daily), RLS, RLS isolation tests, API key create/hash/verify/revoke | A | none (dev cloud project chosen) |
 | 2. Capture | SDK LangGraph callback + buffered async sender, `POST /v1/runs` (idempotent, enqueue to pgmq), usage counters | B | none (FastAPI on Vercel `bom1` chosen) |
 | 3. Firewall core | Taint tracking, secret/PII redaction, "tainted runs never become active" rule | G (first half) | none |
-| 4. Scoring | Scorer pipeline (tests/feedback/events, judge fallback), `POST /v1/feedback` | C | LLM provider |
+| 4. Scoring | Scorer pipeline (tests/feedback/events, judge fallback), `POST /v1/feedback` | C | none (Claude Haiku 5.5 chosen) |
 | 5. Distillation | Playbooks, failure signatures, dedupe/merge, versioning, provenance, embeddings | D | Embedding model |
 | 6. Recall | Hybrid search, gate score, holdout, warnings, `POST /v1/recall`, SDK recall node | E | none |
 | 7. Proof (MVP) | Benchmark harness: cold vs with memory, success rate and token deltas | F | none |
