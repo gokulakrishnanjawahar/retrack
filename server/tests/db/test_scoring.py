@@ -105,3 +105,11 @@ def test_unknown_run_is_an_error(conn, tenants):
     a, _ = tenants
     with pytest.raises(LookupError):
         score_run(conn, a.project_id, uuid.uuid4(), llm=FakeLLM([VERDICT]))
+
+
+def test_judge_sees_the_final_answer(conn, tenants):
+    a, _ = tenants
+    conn.execute("update public.runs set output_text = 'Refund done!' where id = %s", (a.run_id,))
+    llm = FakeLLM([VERDICT])
+    score_run(conn, a.project_id, a.run_id, llm=llm)
+    assert "Final answer: Refund done!" in llm.calls[0]["user"]

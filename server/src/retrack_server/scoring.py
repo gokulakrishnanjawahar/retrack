@@ -68,7 +68,8 @@ def score_run(
     """Resolve a run's outcome, asking the judge only if nothing else is known."""
     with project_scope(conn, project_id):
         run = conn.execute(
-            "select task_text, taint_level from public.runs where project_id = %s and id = %s",
+            "select task_text, taint_level, output_text from public.runs"
+            " where project_id = %s and id = %s",
             (project_id, run_id),
         ).fetchone()
         if run is None:
@@ -101,6 +102,7 @@ def score_run(
                 for s in steps
             ],
             trusted=run[1] == "trusted",
+            output=run[2],
         )
         conn.execute(
             "select private.increment_llm_usage(%s, %s)",

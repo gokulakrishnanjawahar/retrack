@@ -28,13 +28,14 @@ One run = one finished agent task, sent by the SDK after the run. Fields describ
   "tool_versions": {"stripe": "2026-09", "orders_api": "v3"},
   "tokens_in": 1200, "tokens_out": 300, "cost_usd": 0.004, "latency_ms": 5400,
   "outcome_hint": {"outcome": "success", "source": "test"},
+  "output": "Refunded order #123; the money reaches your card in 5-7 days.",
   "steps": [
     {"idx": 0, "type": "tool", "tool_name": "orders_api", "args": {"order_id": "123"},
      "result_class": "ok", "error_class": null, "latency_ms": 120, "input_trust": "untrusted"}
   ]
 }
 ```
-Limits: request body at most 1 MB (413), at most 500 steps (422). The server redacts secrets and personal data in `task` and `args` before storing them. `outcome_hint.source` is one of `test`, `feedback`, `event`.
+Limits: request body at most 1 MB (413), at most 500 steps (422). The server redacts secrets and personal data in `task`, `args` and `output` before storing them. `output` (optional, added 2026-10-19) is the agent's final answer: the SDK takes the last AI message, or a state field named with `rt.callback(output_key=...)`; it is truncated to 4,000 characters. The judge checks it against the steps, so a claimed success with a failed key step is a failure. Hand-offs to a human are judged `unknown`. `outcome_hint.source` is one of `test`, `feedback`, `event`.
 
 Response `202`: `{"id": "...", "duplicate": false}`; `duplicate` is true when the run id was already stored for this project.
 
@@ -81,7 +82,7 @@ rt = Retrack(api_key=os.environ["RETRACK_API_KEY"], agent="support-agent")
 graph = builder.compile()
 result = graph.invoke(inputs, config={"callbacks": [rt.callback()]})  # capture
 memory = rt.recall(task=..., model_id=..., tool_versions=...)  # before task
-handler = rt.callback()                                              # handler.last_run_id after a run
+handler = rt.callback()  # handler.last_run_id after a run
 rt.feedback(handler.last_run_id, outcome="success", source="test")
 ```
 Final shapes are decided during implementation; propose before changing.

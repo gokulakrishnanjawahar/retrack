@@ -10,7 +10,7 @@ from psycopg.types.json import Jsonb
 
 from retrack_server.db import enqueue_run, increment_usage, project_scope
 from retrack_server.redaction import redact_text, redact_value
-from retrack_server.schemas import RunIn
+from retrack_server.schemas import MAX_OUTPUT_CHARS, RunIn
 from retrack_server.scoring import add_signal
 
 
@@ -38,13 +38,14 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
     hint = run.outcome_hint
     # Redact before anything is stored: raw secrets and personal data never reach the database.
     task_text, _ = redact_text(run.task)
+    output_text = redact_text(run.output)[0][:MAX_OUTPUT_CHARS] if run.output else None
     redacted_args = [redact_value(step.args)[0] for step in run.steps]
     with project_scope(conn, project_id):
         agent_id = _agent_id(conn, project_id, run.agent)
         inserted = conn.execute(
             "insert into public.runs (project_id, id, agent_id, task_text, model_id,"
-            " tool_versions, tokens_in, tokens_out, cost_usd, latency_ms)"
-            " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            " tool_versions, tokens_in, tokens_out, cost_usd, latency_ms, output_text)"
+            " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             " on conflict (project_id, id) do nothing returning id",
             (
                 project_id,
@@ -57,6 +58,7 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
                 run.tokens_out,
                 run.cost_usd,
                 run.latency_ms,
+                output_text,
             ),
         ).fetchone()
         if inserted is None:

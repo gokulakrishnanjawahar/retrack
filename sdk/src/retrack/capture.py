@@ -23,6 +23,7 @@ logger = logging.getLogger("retrack")
 
 MAX_STEPS = 500
 MAX_TASK_CHARS = 50_000
+MAX_OUTPUT_CHARS = 4000
 _TASK_KEYS = ("task", "input", "question", "query")
 
 
@@ -50,6 +51,7 @@ class _Run:
     id: UUID
     task: str
     started: float
+    output: str | None = None
     model_id: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0
@@ -92,6 +94,24 @@ def derive_task(inputs: Any) -> str:
     return text if text not in ("", "null", "{}") else "(unknown task)"
 
 
+def extract_output(outputs: Any, output_key: str | None) -> str | None:
+    """The run's final answer: a chosen state field, else the last AI message, else the outputs."""
+    value: Any = outputs
+    if isinstance(outputs, dict):
+        if output_key is not None:
+            value = outputs.get(output_key)
+        else:
+            for message in reversed(outputs.get("messages") or []):
+                role, text = _message_text(message)
+                if role in ("ai", "assistant") and text:
+                    value = text
+                    break
+    if value is None:
+        return None
+    text = value if isinstance(value, str) else json.dumps(_json_safe(value))
+    return redact_secrets(text)[:MAX_OUTPUT_CHARS] or None
+
+
 def _llm_usage(response: Any) -> tuple[int | None, int | None, str | None]:
     tokens_in = tokens_out = model = None
     for generations in getattr(response, "generations", None) or []:
@@ -123,8 +143,10 @@ class RetrackCallbackHandler(BaseCallbackHandler):
         model_id: str | None = None,
         tool_versions: dict[str, str] | None = None,
         trusted_tools: frozenset[str] = frozenset(),
+        output_key: str | None = None,
     ):
         self._submit = submit
+        self._output_key = output_key
         self._agent = agent
         self._task = task
         self._model_id = model_id
@@ -158,6 +180,10 @@ class RetrackCallbackHandler(BaseCallbackHandler):
     @_safe
     def on_chain_end(self, outputs, *, run_id, parent_run_id=None, **kwargs):
         if parent_run_id is None:
+            with self._lock:
+                run = self._runs.get(run_id)
+                if run is not None:
+                    run.output = extract_output(outputs, self._output_key)
             self._finish(run_id)
 
     @_safe
@@ -186,6 +212,7 @@ class RetrackCallbackHandler(BaseCallbackHandler):
             "tokens_in": run.tokens_in,
             "tokens_out": run.tokens_out,
             "latency_ms": int((time.monotonic() - run.started) * 1000),
+            **({"output": run.output} if run.output else {}),
             "steps": [{"idx": i, "type": step.type, **step.fields} for i, step in enumerate(steps)],
         }
         self._submit(payload)

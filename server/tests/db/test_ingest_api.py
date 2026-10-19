@@ -198,3 +198,24 @@ def test_oversized_body_is_413(client, api_key, run_payload):
     response = post_run(client, api_key, payload)
     assert response.status_code == 413
     assert response.json()["error"]["code"] == "payload_too_large"
+
+
+def test_final_output_is_redacted_truncated_and_stored(client, conn, api_key, run_payload):
+    payload = run_payload(output="Refunded order 42 for priya@example.com. " + "x" * 10_000)
+    post_run(client, api_key, payload)
+    output = conn.execute(
+        "select output_text from public.runs where id = %s", (payload["id"],)
+    ).fetchone()[0]
+    assert output.startswith("Refunded order 42 for <EMAIL>.")
+    assert len(output) <= 4000
+
+
+def test_output_is_optional(client, conn, api_key, run_payload):
+    payload = run_payload()
+    post_run(client, api_key, payload)
+    assert (
+        conn.execute(
+            "select output_text from public.runs where id = %s", (payload["id"],)
+        ).fetchone()[0]
+        is None
+    )

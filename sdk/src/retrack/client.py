@@ -56,8 +56,14 @@ class Retrack:
         except Exception:
             logger.exception("retrack: could not start sender; capture disabled")
 
-    def callback(self, task: str | None = None) -> RetrackCallbackHandler:
-        """A LangChain/LangGraph callback handler. Pass `task` to override the derived task."""
+    def callback(
+        self, task: str | None = None, output_key: str | None = None
+    ) -> RetrackCallbackHandler:
+        """A LangChain/LangGraph callback handler.
+
+        `task` overrides the task text derived from the inputs; `output_key` names the
+        graph-state field holding the final answer (default: the last AI message).
+        """
         return RetrackCallbackHandler(
             self._submit,
             agent=self.agent,
@@ -65,6 +71,7 @@ class Retrack:
             model_id=self._model_id,
             tool_versions=self._tool_versions,
             trusted_tools=self._trusted_tools,
+            output_key=output_key,
         )
 
     def feedback(

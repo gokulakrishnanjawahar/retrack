@@ -226,3 +226,38 @@ def test_feedback_is_sent_after_the_run(rt, monkeypatch):
 def test_feedback_never_raises_even_with_bad_input():
     rt = Retrack(agent="support-agent")  # capture disabled: no key or URL
     rt.feedback("not-a-uuid", outcome="maybe", source="judge")
+
+
+def test_final_answer_is_captured_from_the_last_ai_message(rt, captured):
+    run_agent(rt)
+    rt.flush(timeout=2)
+    assert captured[0]["output"] == "Refund issued"
+
+
+def test_output_key_selects_a_state_field(captured):
+    def handler(request):
+        captured.append(json.loads(request.content))
+        return httpx.Response(202)
+
+    rt2 = Retrack(
+        api_key=API_KEY,
+        agent="a",
+        base_url="https://retrack.test",
+        transport=httpx.MockTransport(handler),
+    )
+    build_graph().invoke(
+        {"messages": [HumanMessage("t")], "result": ""},
+        config={"callbacks": [rt2.callback(output_key="result")]},
+    )
+    rt2.flush(timeout=2)
+    assert captured[0]["output"] == "order 123: damaged"
+
+
+def test_long_outputs_are_truncated_and_secrets_stripped():
+    from retrack.capture import extract_output
+
+    text = extract_output(
+        {"messages": [AIMessage("key sk_live_51HxAbCdEfGhIjKlMnOpQr " + "y" * 9000)]}, None
+    )
+    assert text.startswith("key <SECRET>")
+    assert len(text) <= 4000

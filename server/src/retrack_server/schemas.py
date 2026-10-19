@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 MAX_BODY_BYTES = 1_000_000
 MAX_STEPS = 500
+MAX_OUTPUT_CHARS = 4000
 
 AgentName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")]
 ShortText = Annotated[str, StringConstraints(min_length=1, max_length=200)]
@@ -42,6 +43,8 @@ class RunIn(BaseModel):
     cost_usd: Annotated[float, Field(ge=0)] | None = None
     latency_ms: NonNegativeInt | None = None
     outcome_hint: OutcomeHint | None = None
+    # The agent's final answer; redacted and truncated to MAX_OUTPUT_CHARS when stored.
+    output: Annotated[str, StringConstraints(max_length=200_000)] | None = None
     steps: list[StepIn] = Field(default_factory=list, max_length=MAX_STEPS)
 
     @model_validator(mode="after")
