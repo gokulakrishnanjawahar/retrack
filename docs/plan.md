@@ -26,7 +26,7 @@ Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit lo
 - Phase 1: done (schema, RLS, API keys).
 - Phase 2: done (capture SDK, `POST /v1/runs`, queue, deployed at `https://retrack-api.vercel.app` in `bom1`).
 - Phase 3: done (redaction at ingest, taint tracking, promotion rule, workers via Supabase Cron → `/internal/drain`, verified live).
-- Phase 4: built and tested locally with a fake LLM (outcome signals, judge, `POST /v1/feedback`, SDK `rt.feedback`); live deploy and the one-time real-model check need Gokul's approval to spend credits.
+- Phase 4: done (outcome signals, AI judge on Claude Haiku 5.5, `POST /v1/feedback`, SDK `rt.feedback`, final answers and tool results captured). Deployed with the LLM **off**; judge quality check 17/23 with no false successes ($0.0025 spent). Turning the live judge on needs Gokul's approval.
 
 ## Why this order
 - **Firewall is split.** Redaction and the taint gate (Phase 3) come before anything is embedded or distilled, so secrets never reach vectors and rule 8 in `CLAUDE.md` holds from the first playbook. The LLM-heavy checks (Phase 8) land before any external user relies on recall.
