@@ -8,10 +8,15 @@ run without --approved-spend, and must only be run when Gokul has approved the s
 """
 
 import argparse
+import datetime
+import json
 import os
+import pathlib
+import statistics
 import sys
+import time
 
-from retrack_server.judge import judge_run
+from retrack_server.judge import SYSTEM_PROMPT, build_judge_prompt, judge_run
 from retrack_server.llm import AnthropicLLM
 
 # Claude Haiku 5.5 prices per 1M tokens for prompts under 100k tokens.
@@ -234,9 +239,18 @@ CASES = [
 ]
 
 
+def category(index: int) -> str:
+    if index >= len(CASES) - 2:
+        return "poisoned"
+    if index >= len(CASES) - 5:
+        return "final-answer"
+    return "normal"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--approved-spend", action="store_true", help="Gokul approved this spend")
+    parser.add_argument("--budget-usd", type=float, default=0.01, help="hard spending cap")
     args = parser.parse_args()
     if not args.approved_spend:
         print("Refusing to run: this spends real credits. Pass --approved-spend once approved.")
@@ -248,22 +262,73 @@ def main() -> int:
 
     model = os.environ.get("RETRACK_LLM_MODEL") or "claude-haiku-5-5"
     client = AnthropicLLM(api_key=key, model=model, effort="low")
-    correct, tokens_in, tokens_out = 0, 0, 0
-    for i, (task, steps, expected, *answer) in enumerate(CASES, 1):
-        verdict = judge_run(client, task, steps, trusted=True, output=answer[0] if answer else None)
-        tokens_in += verdict.usage.input_tokens
-        tokens_out += verdict.usage.output_tokens
-        ok = verdict.outcome == expected
-        correct += ok
-        print(
-            f"{i:2} {'ok  ' if ok else 'MISS'} expected={expected:7} got={verdict.outcome} "
-            f"conf={verdict.confidence:.2f}  {verdict.reason[:70]}"
+    results, spent = [], 0.0
+    for i, (task, steps, expected, *answer) in enumerate(CASES):
+        output = answer[0] if answer else None
+        prompt = build_judge_prompt(task, steps, output)
+        # Worst case for this call: generous input estimate plus the full output limit.
+        worst = (
+            len(SYSTEM_PROMPT) + len(prompt)
+        ) / 2 / 1e6 * INPUT_PRICE + 1024 / 1e6 * OUTPUT_PRICE
+        if spent + worst > args.budget_usd:
+            print(f"stopping before case {i + 1}: budget ${args.budget_usd} could be exceeded")
+            break
+        started = time.monotonic()
+        try:
+            verdict = judge_run(client, task, steps, trusted=True, output=output)
+        except Exception as exc:  # report and stop: never retry in a loop that spends money
+            print(f"case {i + 1} failed: {type(exc).__name__}: {exc}")
+            break
+        seconds = time.monotonic() - started
+        cost = (
+            verdict.usage.input_tokens / 1e6 * INPUT_PRICE
+            + verdict.usage.output_tokens / 1e6 * OUTPUT_PRICE
         )
-    cost = tokens_in / 1e6 * INPUT_PRICE + tokens_out / 1e6 * OUTPUT_PRICE
-    print(
-        f"\naccuracy {correct}/{len(CASES)}  tokens in={tokens_in} out={tokens_out}  "
-        f"cost ~${cost:.4f}  model={model}"
-    )
+        spent += cost
+        results.append(
+            {
+                "case": i + 1,
+                "category": category(i),
+                "task": task,
+                "expected": expected,
+                "got": verdict.outcome,
+                "correct": verdict.outcome == expected,
+                "raw_confidence": verdict.usage.data.get("confidence"),
+                "capped_confidence": verdict.confidence,
+                "reason": verdict.reason,
+                "input_tokens": verdict.usage.input_tokens,
+                "output_tokens": verdict.usage.output_tokens,
+                "cost_usd": round(cost, 6),
+                "seconds": round(seconds, 2),
+                "model": verdict.usage.model,
+            }
+        )
+        r = results[-1]
+        print(
+            f"{r['case']:2} {'ok  ' if r['correct'] else 'MISS'} {r['category']:12} "
+            f"exp={expected:7} got={str(r['got']):7} raw={r['raw_confidence']} "
+            f"in={r['input_tokens']} out={r['output_tokens']} {r['seconds']}s  {r['reason'][:60]}"
+        )
+
+    if results:
+        print(f"\nmodel: {results[0]['model']}   spent: ${spent:.5f} of ${args.budget_usd}")
+        for name in ("normal", "final-answer", "poisoned"):
+            group = [r for r in results if r["category"] == name]
+            if group:
+                print(f"{name:13} {sum(r['correct'] for r in group)}/{len(group)} correct")
+        print(f"overall       {sum(r['correct'] for r in results)}/{len(results)} correct")
+        times = sorted(r["seconds"] for r in results)
+        print(
+            f"per call: avg in={statistics.mean(r['input_tokens'] for r in results):.0f} "
+            f"out={statistics.mean(r['output_tokens'] for r in results):.0f} tokens, "
+            f"avg cost ${spent / len(results):.6f}, latency median {statistics.median(times)}s "
+            f"max {times[-1]}s"
+        )
+        out_dir = pathlib.Path(__file__).parent / "results"
+        out_dir.mkdir(exist_ok=True)
+        path = out_dir / f"judge_check_{datetime.date.today()}.json"
+        path.write_text(json.dumps({"spent_usd": spent, "results": results}, indent=2))
+        print(f"saved {path}")
     return 0
 
 
