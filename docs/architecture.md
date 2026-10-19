@@ -48,7 +48,7 @@ Supabase, region ap-south-1 (Mumbai)  │ every minute, HTTP POST with secret   
 | Building | Free | Hobby (free) | Free Supabase projects pause when inactive; Hobby is non-commercial only |
 | Launch (paying customers) | Pro (~$25/mo) | Pro (~$20/mo) | Required for commercial use and no pausing |
 
-LLM calls (from Phase 4) use Claude Haiku 5.5 (about $0.0004 per judge call); customers may bring their own key at launch. Embedding provider is OPEN.
+LLM calls (from Phase 4) use Claude Haiku 5.5 (about $0.0004 per judge call); customers may bring their own key at launch. Embeddings use gemini-embedding-001 on Vertex AI in Mumbai (about $0.15 per 1M tokens).
 
 ## Components
 
