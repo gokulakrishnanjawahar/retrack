@@ -84,8 +84,14 @@ class Retrack:
     ) -> None:
         """Report a run's outcome later: `source` is "test", "event" or "feedback".
 
-        Get the run id from the callback handler (`handler.last_run_id`). Sent in the
-        background like runs; never raises.
+        Safest: choose the run id yourself and pass it to the graph, then use it here:
+
+            run_id = uuid.uuid4()
+            graph.invoke(inputs, config={"callbacks": [handler], "run_id": run_id})
+            rt.feedback(run_id, outcome="success", source="test")
+
+        `handler.last_run_id` also works when a handler runs one graph at a time. Sent in
+        the background like runs; never raises.
         """
         try:
             payload = {

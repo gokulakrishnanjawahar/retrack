@@ -261,3 +261,36 @@ def test_long_outputs_are_truncated_and_secrets_stripped():
     )
     assert text.startswith("key <SECRET>")
     assert len(text) <= 4000
+
+
+def test_developer_chosen_run_id_is_used(rt, captured):
+    chosen = uuid.uuid4()
+    handler = rt.callback()
+    build_graph().invoke(
+        {"messages": [HumanMessage("task")], "result": ""},
+        config={"callbacks": [handler], "run_id": chosen},
+    )
+    rt.flush(timeout=2)
+    assert captured[0]["id"] == str(chosen)
+
+
+def test_shared_handler_keeps_concurrent_runs_apart(rt, captured):
+    from concurrent.futures import ThreadPoolExecutor
+
+    handler = rt.callback()
+    ids = [uuid.uuid4() for _ in range(4)]
+
+    def run(run_id):
+        build_graph().invoke(
+            {"messages": [HumanMessage(f"task {run_id}")], "result": ""},
+            config={"callbacks": [handler], "run_id": run_id},
+        )
+
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(run, ids))
+    rt.flush(timeout=5)
+    by_id = {run["id"]: run for run in captured}
+    assert set(by_id) == {str(i) for i in ids}
+    for run_id in ids:
+        assert by_id[str(run_id)]["task"] == f"task {run_id}"
+        assert len(by_id[str(run_id)]["steps"]) == 4

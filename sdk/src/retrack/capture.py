@@ -155,6 +155,8 @@ class RetrackCallbackHandler(BaseCallbackHandler):
         self._lock = threading.Lock()
         self._runs: dict[UUID, _Run] = {}
         self._root_of: dict[UUID, UUID] = {}
+        # Most recent run started by this handler. With one handler shared across concurrent
+        # runs, pass config={"run_id": ...} instead and use that id.
         self.last_run_id: UUID | None = None
 
     # Run boundaries -------------------------------------------------------------------
