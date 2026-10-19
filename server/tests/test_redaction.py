@@ -107,3 +107,33 @@ def test_nested_values_and_sensitive_keys():
     assert counts["secret"] == 4
     assert counts["email"] == 1
     assert counts["phone"] == 1
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # Guess-based checks are skipped for identifier fields...
+        ({"order_id": "9876543210"}, {"order_id": "9876543210"}),
+        ({"invoice_no": "(415) 555-0132"}, {"invoice_no": "(415) 555-0132"}),
+        (
+            {"file_id": "Zx9Qw3Er7Ty1Ui5Op2As8Df4Gh6Jk0Lm"},
+            {"file_id": "Zx9Qw3Er7Ty1Ui5Op2As8Df4Gh6Jk0Lm"},
+        ),
+        ({"sha": "Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56"}, {"sha": "Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56"}),
+        ({"items": [{"sku": "9123456780"}]}, {"items": [{"sku": "9123456780"}]}),
+        # ...but certain checks still apply to them.
+        ({"order_id": "sk_live_51HxAbCdEfGhIjKlMnOpQr"}, {"order_id": "<SECRET>"}),
+        ({"ref": "priya@example.com"}, {"ref": "<EMAIL>"}),
+        ({"order_id": "4111 1111 1111 1111"}, {"order_id": "<CARD>"}),
+        ({"url": "https://u:p4ssword@host/x"}, {"url": "https://<SECRET>@host/x"}),
+        # Other fields and free text stay strict.
+        ({"note": "9876543210"}, {"note": "<PHONE>"}),
+        ({"contact": "9876543210"}, {"contact": "<PHONE>"}),
+    ],
+)
+def test_identifier_fields_skip_only_the_guess_based_checks(value, expected):
+    assert redact_value(value)[0] == expected
+
+
+def test_free_text_stays_strict():
+    assert redact_text("order 9876543210")[0] == "order <PHONE>"

@@ -19,6 +19,15 @@ SENSITIVE_KEY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Identifier fields (order_id, invoice_no, sku, file_id, sha, url, ...): values here are
+# usually IDs, so the guess-based checks (bare phone numbers, random-looking strings) are
+# skipped. Certain checks (known key formats, emails, Luhn/Verhoeff-valid numbers) still run.
+IDENTIFIER_KEY_RE = re.compile(
+    r"(?:^|[_.-])(id|ids|no|num|number|ref|reference|sku|code|hash|sha|digest|uuid|slug|"
+    r"url|uri|path|file)$",
+    re.IGNORECASE,
+)
+
 _SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S),
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),  # OpenAI, Anthropic
@@ -106,8 +115,11 @@ def _looks_random(token: str) -> bool:
     return entropy >= 3.8
 
 
-def redact_text(text: str) -> tuple[str, dict[str, int]]:
-    """Return the text with secrets and personal data replaced, plus counts per kind."""
+def redact_text(text: str, identifier: bool = False) -> tuple[str, dict[str, int]]:
+    """Return the text with secrets and personal data replaced, plus counts per kind.
+
+    `identifier=True` (value of an identifier field) skips the guess-based checks.
+    """
     counts = dict.fromkeys(KINDS, 0)
 
     def sub(pattern: re.Pattern, kind: str, replacement: str, valid=None) -> None:
@@ -126,7 +138,8 @@ def redact_text(text: str) -> tuple[str, dict[str, int]]:
     sub(_BEARER_RE, "secret", r"\g<1><SECRET>")
     sub(_URL_CREDENTIALS_RE, "secret", r"\g<1><SECRET>\g<2>")
     sub(_ASSIGNMENT_RE, "secret", r"\g<1><SECRET>", lambda m: m.group(2) != "<SECRET>")
-    sub(_RANDOM_TOKEN_RE, "secret", "<SECRET>", lambda m: _looks_random(m.group(0)))
+    if not identifier:
+        sub(_RANDOM_TOKEN_RE, "secret", "<SECRET>", lambda m: _looks_random(m.group(0)))
 
     sub(_EMAIL_RE, "email", "<EMAIL>")
     digits = lambda m: re.sub(r"\D", "", m.group(0))  # noqa: E731
@@ -134,8 +147,9 @@ def redact_text(text: str) -> tuple[str, dict[str, int]]:
     sub(_AADHAAR_RE, "aadhaar", "<AADHAAR>", lambda m: _verhoeff_valid(digits(m)))
     sub(_PAN_RE, "pan", "<PAN>")
     sub(_SSN_RE, "ssn", "<SSN>")
-    for pattern in _PHONE_RES:
-        sub(pattern, "phone", "<PHONE>")
+    if not identifier:
+        for pattern in _PHONE_RES:
+            sub(pattern, "phone", "<PHONE>")
     return text, counts
 
 
@@ -143,9 +157,9 @@ def redact_value(value: Any) -> tuple[Any, dict[str, int]]:
     """Redact strings inside JSON-like data; values under sensitive keys become <SECRET>."""
     totals = dict.fromkeys(KINDS, 0)
 
-    def walk(item: Any) -> Any:
+    def walk(item: Any, identifier: bool = False) -> Any:
         if isinstance(item, str):
-            redacted, counts = redact_text(item)
+            redacted, counts = redact_text(item, identifier)
             for kind, n in counts.items():
                 totals[kind] += n
             return redacted
@@ -156,10 +170,11 @@ def redact_value(value: Any) -> tuple[Any, dict[str, int]]:
                     totals["secret"] += 1
                     result[key] = "<SECRET>"
                 else:
-                    result[key] = walk(child)
+                    is_id = isinstance(key, str) and bool(IDENTIFIER_KEY_RE.search(key))
+                    result[key] = walk(child, is_id)
             return result
         if isinstance(item, list | tuple):
-            return [walk(child) for child in item]
+            return [walk(child, identifier) for child in item]
         return item
 
     return walk(value), totals
