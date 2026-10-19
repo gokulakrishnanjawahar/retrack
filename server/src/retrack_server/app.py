@@ -157,6 +157,7 @@ async def internal_drain(
             "processed": result.processed,
             "retrying": result.retrying,
             "dead_lettered": result.dead_lettered,
+            "scoring_gave_up": result.scoring_gave_up,
         }
     )
 

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 5
 VISIBILITY_SECONDS = 120
-BATCH = 50
+BATCH = 10
 TIME_BUDGET_SECONDS = 45
 
 
@@ -37,6 +37,8 @@ class DrainResult:
     processed: int = 0
     retrying: int = 0
     dead_lettered: int = 0
+    # Firewall done, but scoring failed on every attempt: run kept with outcome unknown.
+    scoring_gave_up: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -77,19 +79,32 @@ def drain(
         if not jobs:
             break
         for job in jobs:
+            # Checked before every job: a slow batch must not outlive the visibility
+            # timeout, or another worker would pick the same jobs (and pay the judge twice).
+            # Jobs not reached here reappear once their visibility timeout ends.
+            if time.monotonic() >= deadline:
+                break
+            stage = "firewall"
             try:
+                # The firewall result is committed on its own, so a judge outage cannot
+                # undo it; on retry the firewall simply runs again (it is idempotent).
                 with conn.transaction():
                     process_run(conn, job.project_id, job.run_id)
+                stage = "scoring"
+                with conn.transaction():
                     score_run(conn, job.project_id, job.run_id, llm)
                     complete_job(conn, job.msg_id)
                 result.processed += 1
             except Exception as exc:
-                error = f"{type(exc).__name__}: {exc}"
+                error = f"{stage}: {type(exc).__name__}: {exc}"
                 logger.warning("job %s for run %s failed: %s", job.msg_id, job.run_id, error)
-                if job.read_count >= max_attempts:
+                result.errors.append(error)
+                if job.read_count < max_attempts:
+                    result.retrying += 1
+                elif stage == "scoring":
+                    complete_job(conn, job.msg_id)
+                    result.scoring_gave_up += 1
+                else:
                     dead_letter_job(conn, job.msg_id, error)
                     result.dead_lettered += 1
-                else:
-                    result.retrying += 1
-                result.errors.append(error)
     return result

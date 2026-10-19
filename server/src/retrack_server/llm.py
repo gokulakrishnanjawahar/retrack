@@ -6,6 +6,7 @@ use FakeLLM and never see a real key.
 """
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -72,11 +73,14 @@ class FakeLLM:
 
     answers: list[dict[str, Any] | Exception]
     calls: list[dict[str, Any]] = field(default_factory=list)
+    delay_seconds: float = 0.0
 
     def generate_json(
         self, *, system: str, user: str, schema: dict[str, Any], max_tokens: int
     ) -> LLMResponse:
         self.calls.append({"system": system, "user": user, "schema": schema})
+        if self.delay_seconds:
+            time.sleep(self.delay_seconds)
         answer = self.answers.pop(0)
         if isinstance(answer, Exception):
             raise answer
