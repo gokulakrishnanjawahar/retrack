@@ -16,6 +16,7 @@ UNTRUSTED_CONFIDENCE_CAP = 0.5
 MAX_PROMPT_CHARS = 12_000  # roughly 3k tokens: cheap, and far below the 100k price tier
 MAX_ARGS_CHARS = 300
 MAX_ANSWER_CHARS = 2000
+MAX_RESULT_CHARS = 300
 
 JUDGE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -61,6 +62,8 @@ def _step_line(step: dict[str, Any]) -> str:
     parts.append(f"result={step.get('result_class') or 'unknown'}")
     if step.get("error_class"):
         parts.append(f"error={step['error_class']}")
+    if step.get("result"):
+        parts.append(f"returned={step['result'][:MAX_RESULT_CHARS]}")
     return " ".join(parts)
 
 

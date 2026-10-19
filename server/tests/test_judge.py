@@ -86,3 +86,8 @@ def test_system_prompt_tells_the_judge_to_verify_claims():
     from retrack_server.judge import SYSTEM_PROMPT
 
     assert "verify" in SYSTEM_PROMPT.lower()
+
+
+def test_tool_results_reach_the_judge():
+    steps = [dict(STEPS[1], result="refund rejected: card expired")]
+    assert "returned=refund rejected: card expired" in build_judge_prompt("t", steps)

@@ -10,7 +10,7 @@ from psycopg.types.json import Jsonb
 
 from retrack_server.db import enqueue_run, increment_usage, project_scope
 from retrack_server.redaction import redact_text, redact_value
-from retrack_server.schemas import MAX_OUTPUT_CHARS, RunIn
+from retrack_server.schemas import MAX_OUTPUT_CHARS, MAX_RESULT_CHARS, RunIn
 from retrack_server.scoring import add_signal
 
 
@@ -40,6 +40,10 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
     task_text, _ = redact_text(run.task)
     output_text = redact_text(run.output)[0][:MAX_OUTPUT_CHARS] if run.output else None
     redacted_args = [redact_value(step.args)[0] for step in run.steps]
+    redacted_results = [
+        redact_text(step.result)[0][:MAX_RESULT_CHARS] if step.result else None
+        for step in run.steps
+    ]
     with project_scope(conn, project_id):
         agent_id = _agent_id(conn, project_id, run.agent)
         inserted = conn.execute(
@@ -68,8 +72,8 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
             cur.executemany(
                 "insert into public.steps (project_id, run_id, idx, type, tool_name, args_hash,"
                 " args_redacted, result_class, error_class, latency_ms, tokens_in, tokens_out,"
-                " input_trust)"
-                " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                " input_trust, result_redacted)"
+                " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 [
                     (
                         project_id,
@@ -85,8 +89,11 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
                         step.tokens_in,
                         step.tokens_out,
                         step.input_trust,
+                        result,
                     )
-                    for step, args in zip(run.steps, redacted_args, strict=True)
+                    for step, args, result in zip(
+                        run.steps, redacted_args, redacted_results, strict=True
+                    )
                 ],
             )
         if hint:

@@ -24,6 +24,7 @@ logger = logging.getLogger("retrack")
 MAX_STEPS = 500
 MAX_TASK_CHARS = 50_000
 MAX_OUTPUT_CHARS = 4000
+MAX_RESULT_CHARS = 1000
 _TASK_KEYS = ("task", "input", "question", "query")
 
 
@@ -110,6 +111,32 @@ def extract_output(outputs: Any, output_key: str | None) -> str | None:
         return None
     text = value if isinstance(value, str) else json.dumps(_json_safe(value))
     return redact_secrets(text)[:MAX_OUTPUT_CHARS] or None
+
+
+def reported_error(output: Any) -> bool:
+    """Whether a tool *returned* an error instead of raising one."""
+    if getattr(output, "status", None) == "error":  # LangChain ToolMessage
+        return True
+    content = getattr(output, "content", output)
+    if isinstance(content, dict):
+        status = content.get("status", content.get("status_code"))
+        return bool(
+            content.get("error")
+            or content.get("errors")
+            or (isinstance(status, int) and status >= 400)
+            or content.get("ok") is False
+            or content.get("success") is False
+        )
+    return isinstance(content, str) and content.lstrip().lower().startswith("error:")
+
+
+def result_text(output: Any) -> str | None:
+    """A tool's return value as short text, with known secrets stripped."""
+    content = getattr(output, "content", output)
+    if content is None:
+        return None
+    text = content if isinstance(content, str) else json.dumps(_json_safe(content))
+    return redact_secrets(text)[:MAX_RESULT_CHARS]
 
 
 def _llm_usage(response: Any) -> tuple[int | None, int | None, str | None]:
@@ -283,7 +310,12 @@ class RetrackCallbackHandler(BaseCallbackHandler):
 
     @_safe
     def on_tool_end(self, output, *, run_id, parent_run_id=None, **kwargs):
-        self._close_step(run_id, result_class="ok")
+        fields: dict[str, Any] = {"result": result_text(output)}
+        if reported_error(output):
+            fields.update(result_class="error", error_class="ReportedError")
+        else:
+            fields["result_class"] = "ok"
+        self._close_step(run_id, **fields)
 
     @_safe
     def on_tool_error(self, error, *, run_id, parent_run_id=None, **kwargs):

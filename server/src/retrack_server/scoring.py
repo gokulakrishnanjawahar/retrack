@@ -84,8 +84,8 @@ def score_run(
             return "resolved" if has_signal else "unknown"
 
         steps = conn.execute(
-            "select idx, type, tool_name, args_redacted, result_class, error_class"
-            " from public.steps where project_id = %s and run_id = %s order by idx",
+            "select idx, type, tool_name, args_redacted, result_class, error_class,"
+            " result_redacted from public.steps where project_id = %s and run_id = %s order by idx",
             (project_id, run_id),
         ).fetchall()
         verdict = judge_run(
@@ -94,7 +94,15 @@ def score_run(
             [
                 dict(
                     zip(
-                        ("idx", "type", "tool_name", "args", "result_class", "error_class"),
+                        (
+                            "idx",
+                            "type",
+                            "tool_name",
+                            "args",
+                            "result_class",
+                            "error_class",
+                            "result",
+                        ),
                         s,
                         strict=True,
                     )

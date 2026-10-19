@@ -219,3 +219,14 @@ def test_output_is_optional(client, conn, api_key, run_payload):
         ).fetchone()[0]
         is None
     )
+
+
+def test_tool_results_are_redacted_and_truncated(client, conn, api_key, run_payload):
+    payload = run_payload()
+    payload["steps"][1]["result"] = "Found order for priya@example.com " + "z" * 5000
+    post_run(client, api_key, payload)
+    stored = conn.execute(
+        "select result_redacted from public.steps where run_id = %s and idx = 1", (payload["id"],)
+    ).fetchone()[0]
+    assert stored.startswith("Found order for <EMAIL>")
+    assert len(stored) <= 1000
