@@ -13,7 +13,7 @@ Persistent agent memory is an active attack surface. Research in 2026 (MemGhost,
 ## Rules
 1. A tainted run cannot directly create or update an **active** playbook.
 2. Tainted-run candidates go to `review_queue` unless they pass all automatic checks below; even then they start as `candidate`, not `active`.
-3. Promotion to `active` requires either human approval or N independent trusted successes (`REQUIRED_TRUSTED_SUCCESSES`, default 3). Memory with quarantined sources needs a human. Implemented in `retrack_server.firewall.promotion_allowed`; Phase 5 must call it and add a database guard.
+3. Promotion to `active` requires either human approval or N independent trusted successes (`REQUIRED_TRUSTED_SUCCESSES`, default 3). Memory with quarantined sources needs a human. Implemented in `retrack_server.firewall.promotion_allowed` and enforced in the database by a trigger on `playbooks` (Phase 5).
 
 ## Automatic checks
 - **Secret scanning:** regex and entropy checks for API keys, tokens, private keys, passwords; redact before storage and before embedding.
@@ -21,7 +21,7 @@ Persistent agent memory is an active attack surface. Research in 2026 (MemGhost,
 - **Where (decided 2026-10-18):** both run at ingest, before anything is stored, on task text and tool arguments (`retrack_server.redaction`). Raw secrets and personal data are never stored. The SDK also strips well-known credentials before sending.
 - **Injection classifier:** flags instructions embedded in data ("ignore previous", role changes, exfiltration URLs, requests to remember/store things). Uses an LLM (provider OPEN) plus heuristics.
 - **Behavioural anomaly:** if a new or updated playbook would change which tools an agent selects for a task cluster versus its baseline, quarantine and flag.
-- **Instruction-shaped memory:** playbook text must describe procedures for the task, not standing instructions about policy, permissions, recipients or URLs; flag any that do.
+- **Instruction-shaped memory:** playbook text must describe procedures for the task, not standing instructions about policy, permissions, recipients or URLs; flag any that do. Phase 5 uses a heuristic (URLs, override phrases, "always/never send...", credential words) that sends the playbook to review; the LLM classifier comes in Phase 8.
 
 ## Quarantine and provenance
 - `status = quarantined` playbooks are never recalled.

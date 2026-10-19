@@ -1,6 +1,6 @@
 # Data model (Supabase Postgres + pgvector)
 
-All tables carrying customer data have `project_id` and row-level security (RLS) policies. The server runs each request as the `retrack_api` role with `app.project_id` set for the transaction; RLS exposes only that project's rows. Supabase's `anon` and `authenticated` roles have no access until dashboard login is decided. API keys are checked by `private.verify_api_key`, the only path from `retrack_api` to `api_keys`. Vector dimension depends on the embedding model, which is OPEN; write `vector(<DIM>)` as a placeholder until decided. Ask before creating migrations.
+All tables carrying customer data have `project_id` and row-level security (RLS) policies. The server runs each request as the `retrack_api` role with `app.project_id` set for the transaction; RLS exposes only that project's rows. Supabase's `anon` and `authenticated` roles have no access until dashboard login is decided. API keys are checked by `private.verify_api_key`, the only path from `retrack_api` to `api_keys`. Vectors are `extensions.halfvec(1536)` (gemini-embedding-001 at 1,536 dimensions, half precision), cosine distance, HNSW indexes. Memory tables are written only by role `retrack_pipeline` inside one project (`pipeline_scope`); `retrack_api` has no access to them yet (recall in Phase 6 will add read access). Ask before creating migrations.
 
 ## Tenancy and access
 | Table | Key fields |
@@ -16,7 +16,7 @@ API keys: format `rtk_live_<48 hex>` (or `rtk_test_`); show once; store only HMA
 ## Runs
 | Table | Key fields |
 |---|---|
-| runs | id (client-generated, idempotency key; primary key is (project_id, id) so tenants never collide), project_id, agent_id, task_text, task_embedding vector(<DIM>) (added in Phase 5), model_id, tool_versions jsonb, outcome (success / failure / unknown), outcome_source (test / feedback / event / judge), confidence, tokens_in, tokens_out, cost_usd, latency_ms, taint_level (trusted / untrusted / quarantined), holdout bool, recalled_playbook_ids uuid[], trace_uri, output_text (final answer, redacted, at most 4,000 characters), processed_at (set by the firewall worker), created_at |
+| runs | id (client-generated, idempotency key; primary key is (project_id, id) so tenants never collide), project_id, agent_id, task_text, task_embedding halfvec(1536), embedding_model, distilled_at, distilled_as (success / failure / skipped), model_id, tool_versions jsonb, outcome (success / failure / unknown), outcome_source (test / feedback / event / judge), confidence, tokens_in, tokens_out, cost_usd, latency_ms, taint_level (trusted / untrusted / quarantined), holdout bool, recalled_playbook_ids uuid[], trace_uri, output_text (final answer, redacted, at most 4,000 characters), processed_at (set by the firewall worker), created_at |
 | steps | project_id, run_id, idx (primary key: project_id + run_id + idx), type (llm / tool), tool_name, args_hash, args_redacted jsonb, result_class, error_class, latency_ms, tokens_in, tokens_out, input_trust (trusted / untrusted) |
 
 ## Outcomes
@@ -37,11 +37,12 @@ Only role `retrack_worker` can read or remove `runs` jobs (`private.read_run_job
 ## Memory
 | Table | Key fields |
 |---|---|
-| playbooks | id, project_id, agent_id, version, status (candidate / active / quarantined / retired), preconditions text, steps jsonb, pitfalls text, embedding vector(<DIM>), success_rate, uses, last_success_at, validated_models text[], tool_versions jsonb, content_hash, created_at |
-| playbook_versions | playbook_id, version, snapshot jsonb, change_reason, created_at (for diff and rollback) |
-| failure_signatures | id, project_id, agent_id, tool_name, error_class, input_shape, fingerprint (unique per project), occurrences, last_seen, recovery_playbook_id, unrecoverable bool |
-| provenance | object_type, object_id, source_run_ids uuid[], input_sources text[], trust_level, reviewer_id, approved_at |
-| review_queue | id, project_id, object_type, object_id, reason, status, created_at |
+| playbooks | id, project_id, agent_id, version, status (candidate / active / quarantined / retired), title, task_pattern, preconditions, steps jsonb [{action, tool}], pitfalls, embedding halfvec(1536), embedding_model, support_count, trusted_support, untrusted_sources, quarantined_sources, passed_automatic_checks, uses, successes, success_rate, last_success_at, validated_models text[], tool_versions jsonb, content_hash, approved_by, approved_at, search_text tsvector, created_at, updated_at. A trigger refuses `active` unless `private.playbook_can_activate` (the promotion rule) holds |
+| playbook_versions | project_id, playbook_id, version, snapshot jsonb, change_reason, created_at (for diff and rollback) |
+| failure_signatures | id, project_id, agent_id, tool_name, error_class, input_shape (keys and types, no values), fingerprint (sha256 of tool, error class, input shape; unique per project), occurrences, first_seen, last_seen, example_run_id, recovery_playbook_id, unrecoverable bool |
+| provenance | project_id, object_type, object_id, source_run_ids uuid[], input_sources text[] (tools used), trust_level (worst of the sources), reviewer_id, approved_at |
+| review_queue | id, project_id, object_type, object_id, reason, status (open / approved / rejected), created_at, resolved_at |
+| embedding_cache | project_id, model, content_hash, embedding (never embed the same text twice) |
 
 ## Testing and migration
 | Table | Key fields |

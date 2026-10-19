@@ -19,7 +19,8 @@ from starlette.exceptions import HTTPException
 
 from retrack_server.api_keys import verify_api_key
 from retrack_server.config import Settings
-from retrack_server.db import project_scope
+from retrack_server.db import enqueue_run, project_scope
+from retrack_server.embeddings import Embedder, embedder_from_settings
 from retrack_server.ingest import store_run
 from retrack_server.llm import LLMClient, llm_from_settings
 from retrack_server.redaction import redact_value
@@ -77,6 +78,12 @@ def get_settings() -> Settings:
 def get_llm(settings: Settings) -> LLMClient | None:
     """Retrack's own LLM, or None unless RETRACK_LLM_ENABLED=true and a key is set."""
     return llm_from_settings(settings)
+
+
+@lru_cache
+def get_embedder(settings: Settings) -> Embedder | None:
+    """Vertex AI embeddings, or None unless RETRACK_EMBEDDINGS_ENABLED=true and a project is set."""
+    return embedder_from_settings(settings)
 
 
 def get_pool(settings: Settings) -> ConnectionPool:
@@ -151,7 +158,9 @@ async def internal_drain(
         x_retrack_worker_secret.encode(), settings.worker_secret.encode()
     ):
         raise ApiError(401, "unauthorized", "missing or invalid worker secret")
-    result = await run_in_threadpool(drain, conn, llm=get_llm(settings))
+    result = await run_in_threadpool(
+        drain, conn, llm=get_llm(settings), embedder=get_embedder(settings)
+    )
     return JSONResponse(
         {
             "processed": result.processed,
@@ -186,14 +195,21 @@ async def record_feedback(
             ).fetchone()
             if exists is None:
                 return None
+            before = conn.execute(
+                "select outcome from public.runs where project_id = %s and id = %s",
+                (project_id, feedback.run_id),
+            ).fetchone()[0]
             add_signal(
                 conn, project_id, feedback.run_id, feedback.source, feedback.outcome, None, detail
             )
-            return conn.execute(
+            row = conn.execute(
                 "select outcome, outcome_source, confidence from public.runs"
                 " where project_id = %s and id = %s",
                 (project_id, feedback.run_id),
             ).fetchone()
+            if row[0] != before:  # the outcome changed: distil the run again
+                enqueue_run(conn, feedback.run_id)
+            return row
 
     row = await run_in_threadpool(store)
     if row is None:

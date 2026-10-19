@@ -16,6 +16,10 @@ class Settings:
     llm_enabled: bool = False
     llm_model: str = "claude-haiku-5-5"
     llm_effort: str = "low"
+    # Embeddings (Vertex AI). Off unless RETRACK_EMBEDDINGS_ENABLED=true AND a project is set.
+    embeddings_enabled: bool = False
+    google_cloud_project: str | None = None
+    google_cloud_location: str = "asia-south1"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -30,4 +34,7 @@ class Settings:
             llm_enabled=os.environ.get("RETRACK_LLM_ENABLED", "").lower() == "true",
             llm_model=os.environ.get("RETRACK_LLM_MODEL") or "claude-haiku-5-5",
             llm_effort=os.environ.get("RETRACK_LLM_EFFORT") or "low",
+            embeddings_enabled=os.environ.get("RETRACK_EMBEDDINGS_ENABLED", "").lower() == "true",
+            google_cloud_project=os.environ.get("GOOGLE_CLOUD_PROJECT") or None,
+            google_cloud_location=os.environ.get("GOOGLE_CLOUD_LOCATION") or "asia-south1",
         )

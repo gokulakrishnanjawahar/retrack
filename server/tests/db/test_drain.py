@@ -205,3 +205,45 @@ def test_judge_failing_every_attempt_completes_the_job_instead_of_dead_lettering
     assert conn.execute(
         "select outcome, processed_at is not null from public.runs where id = %s", (a.run_id,)
     ).fetchone() == ("unknown", True)
+
+
+def test_drain_distils_after_scoring(conn, tenants):
+    from retrack_server.db import enqueue_run, project_scope
+    from retrack_server.embeddings import FakeEmbedder
+    from retrack_server.llm import FakeLLM
+
+    a, _ = tenants
+    with project_scope(conn, a.project_id):
+        enqueue_run(conn, a.run_id)
+    conn.execute(
+        "insert into public.outcome_signals (project_id, run_id, source, outcome, confidence)"
+        " values (%s, %s, 'test', 'success', 1)",
+        (a.project_id, a.run_id),
+    )
+    playbook = {
+        "reusable": True,
+        "title": "t",
+        "task_pattern": "p",
+        "preconditions": "",
+        "steps": [{"action": "look up", "tool": "orders_api"}],
+        "pitfalls": "",
+    }
+    result = drain(
+        conn,
+        llm=FakeLLM([playbook] * 1000),
+        embedder=FakeEmbedder(),
+        time_budget_seconds=20,
+    )
+    assert result.processed >= 1
+    assert (
+        conn.execute("select distilled_as from public.runs where id = %s", (a.run_id,)).fetchone()[
+            0
+        ]
+        == "success"
+    )
+    assert (
+        conn.execute(
+            "select count(*) from public.playbooks where project_id = %s", (a.project_id,)
+        ).fetchone()[0]
+        == 1
+    )

@@ -101,3 +101,18 @@ def test_detail_is_redacted_before_storage(client, conn, auth, tenants):
         "select detail from public.outcome_signals where run_id = %s", (a.run_id,)
     ).fetchone()[0]
     assert detail == {"comment": "email me at <EMAIL>", "rating": 1}
+
+
+def test_feedback_that_changes_the_outcome_requeues_the_run(client, conn, auth, tenants):
+    a, _ = tenants
+
+    def queued():
+        return conn.execute(
+            "select count(*) from pgmq.q_runs where message->>'run_id' = %s", (str(a.run_id),)
+        ).fetchone()[0]
+
+    before = queued()
+    feedback(client, auth, run_id=str(a.run_id), outcome="success", source="test")
+    assert queued() == before + 1
+    feedback(client, auth, run_id=str(a.run_id), outcome="success", source="feedback")
+    assert queued() == before + 1  # outcome unchanged: nothing new to distil

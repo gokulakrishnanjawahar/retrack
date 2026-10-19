@@ -52,3 +52,14 @@ def worker_scope(conn: psycopg.Connection) -> Iterator[None]:
         conn.execute("set local role retrack_worker")
         yield
         conn.execute("reset role")
+
+
+@contextmanager
+def pipeline_scope(conn: psycopg.Connection, project_id: UUID) -> Iterator[None]:
+    """Run as `retrack_pipeline` (reads runs, writes memory) for one project only."""
+    with conn.transaction():
+        conn.execute("set local role retrack_pipeline")
+        conn.execute("select set_config('app.project_id', %s, true)", (str(project_id),))
+        yield
+        conn.execute("select set_config('app.project_id', '', true)")
+        conn.execute("reset role")

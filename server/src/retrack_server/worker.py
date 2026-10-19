@@ -1,5 +1,5 @@
 """Background worker: drains the `runs` queue and runs the pipelines on each job
-(firewall, then scoring).
+(firewall, then scoring, then distillation).
 
 Called by POST /internal/drain, which Supabase Cron triggers every minute.
 """
@@ -12,6 +12,8 @@ from uuid import UUID
 import psycopg
 
 from retrack_server.db import worker_scope
+from retrack_server.distiller import distill_run
+from retrack_server.embeddings import Embedder
 from retrack_server.firewall import process_run
 from retrack_server.llm import LLMClient
 from retrack_server.scoring import score_run
@@ -37,7 +39,7 @@ class DrainResult:
     processed: int = 0
     retrying: int = 0
     dead_lettered: int = 0
-    # Firewall done, but scoring failed on every attempt: run kept with outcome unknown.
+    # Firewall done, but scoring or distillation failed on every attempt: run kept as is.
     scoring_gave_up: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -70,6 +72,7 @@ def drain(
     max_attempts: int = MAX_ATTEMPTS,
     time_budget_seconds: float = TIME_BUDGET_SECONDS,
     llm: LLMClient | None = None,
+    embedder: Embedder | None = None,
 ) -> DrainResult:
     """Process ready jobs until the queue is empty or the time budget is used up."""
     result = DrainResult()
@@ -93,6 +96,9 @@ def drain(
                 stage = "scoring"
                 with conn.transaction():
                     score_run(conn, job.project_id, job.run_id, llm)
+                stage = "distillation"
+                with conn.transaction():
+                    distill_run(conn, job.project_id, job.run_id, llm=llm, embedder=embedder)
                     complete_job(conn, job.msg_id)
                 result.processed += 1
             except Exception as exc:
@@ -101,7 +107,7 @@ def drain(
                 result.errors.append(error)
                 if job.read_count < max_attempts:
                     result.retrying += 1
-                elif stage == "scoring":
+                elif stage in ("scoring", "distillation"):
                     complete_job(conn, job.msg_id)
                     result.scoring_gave_up += 1
                 else:
