@@ -11,8 +11,9 @@ from uuid import UUID
 import psycopg
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
+from psycopg.types.json import Jsonb
 
-from retrack_server.db import project_scope
+from retrack_server.db import project_scope, worker_scope
 
 # Independent trusted successes needed before a candidate becomes active without a human.
 REQUIRED_TRUSTED_SUCCESSES = 3
@@ -35,6 +36,11 @@ def _conn(config: RunnableConfig) -> psycopg.Connection:
 
 def _load(state: FirewallState, config: RunnableConfig) -> dict[str, Any]:
     conn = _conn(config)
+    with project_scope(conn, state["project_id"]):
+        return _read(conn, state)
+
+
+def _read(conn: psycopg.Connection, state: FirewallState) -> dict[str, Any]:
     project = conn.execute(
         "select trusted_tools, task_trusted from public.projects where id = %s",
         (state["project_id"],),
@@ -75,21 +81,18 @@ def _assess(state: FirewallState) -> dict[str, Any]:
 
 
 def _save(state: FirewallState, config: RunnableConfig) -> dict[str, Any]:
+    # Only the worker role may write trust and processing state (least privilege).
     conn = _conn(config)
-    with conn.cursor() as cur:
-        cur.executemany(
-            "update public.steps set input_trust = %s"
-            " where project_id = %s and run_id = %s and idx = %s",
-            [
-                (trust, state["project_id"], state["run_id"], idx)
-                for idx, trust in state["step_trust"].items()
-            ],
+    with worker_scope(conn):
+        conn.execute(
+            "select private.record_firewall_result(%s, %s, %s, %s)",
+            (
+                state["project_id"],
+                state["run_id"],
+                state["taint_level"],
+                Jsonb({str(idx): trust for idx, trust in state["step_trust"].items()}),
+            ),
         )
-    conn.execute(
-        "update public.runs set taint_level = %s, processed_at = now()"
-        " where project_id = %s and id = %s",
-        (state["taint_level"], state["project_id"], state["run_id"]),
-    )
     return {}
 
 
@@ -110,10 +113,9 @@ _GRAPH = _build_graph()
 
 def process_run(conn: psycopg.Connection, project_id: UUID, run_id: UUID) -> str:
     """Run the firewall on one stored run. Returns the run's taint level."""
-    with project_scope(conn, project_id):
-        state = _GRAPH.invoke(
-            {"project_id": project_id, "run_id": run_id}, config={"configurable": {"conn": conn}}
-        )
+    state = _GRAPH.invoke(
+        {"project_id": project_id, "run_id": run_id}, config={"configurable": {"conn": conn}}
+    )
     return state["taint_level"]
 
 
