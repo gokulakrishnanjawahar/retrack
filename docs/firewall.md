@@ -29,4 +29,4 @@ Persistent agent memory is an active attack surface. Research in 2026 (MemGhost,
 - Any injected memory must be traceable to its source runs.
 
 ## Testing the firewall
-Maintain an internal poisoning test suite (crafted runs with embedded instructions) and run it in CI. A change that lets any poisoning case reach `active` fails the build.
+Maintain an internal poisoning test suite (crafted runs with embedded instructions). A change that lets any poisoning case reach `active` fails the build. CI is deferred (see `decisions.md`): the suite runs in the full local test suite before each phase is committed.

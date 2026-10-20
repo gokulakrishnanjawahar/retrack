@@ -26,6 +26,7 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | LLM (judge, distiller, firewall classifier) | Claude Haiku 5.5 (Anthropic), low effort by default; raise effort per job only if evals show it helps. All calls go through a provider-agnostic `LLMClient` interface | Decided 2026-10-19. Prompts stay under 100k tokens (cheaper price tier). Compared against Gemini 2.5 Flash-Lite, which is lower quality and being retired |
 | Embedding model | `gemini-embedding-001` on Google Vertex AI, region `asia-south1` (Mumbai), 1,536 dimensions, behind an `Embedder` interface | Decided 2026-10-19. Top MTEB score among API models; 38 ms network from India vs 200-320 ms for Voyage, OpenAI, Gemini global and others (measured); paid Vertex does not train on data and processing stays in India. Upgrade to Gemini Embedding 2 when it is offered in Mumbai (re-embed; model recorded per vector). Vercel authenticates to Google keylessly via OIDC |
 | LLM keys at launch | Customers can bring their own LLM key (encrypted, never logged); Retrack's own key is used for development and testing | Testing budget about $5 |
+| Continuous integration | Deferred (decided 2026-10-20). The poisoning suite runs locally in the full test suite before each phase is committed; revisit CI when there are collaborators or customers | Deviation from firewall.md ("run it in CI") |
 | ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)
