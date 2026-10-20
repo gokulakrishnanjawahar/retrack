@@ -16,7 +16,7 @@ Phase order, agreed with Gokul on 2026-10-15. Blocks refer to `features.md`; eac
 | 9. Regression | Eval case generation, `retrack test` CLI, GitHub Action | H | none |
 | 10. Migration | Model-migration replay and per-playbook report | I | none |
 | 11. Recovery | Known-fix recovery, circuit-breaker, plan replay | J | none |
-| 12. Dashboard | API keys, ROI holdout charts, review/quarantine queues, playbook diff, migration reports; super-admin analytics across all projects, Gokul only | L | Dashboard login |
+| 12. Dashboard | API keys, ROI holdout charts, review/quarantine queues, playbook diff, migration reports; super-admin analytics across all projects, Gokul only | L | none (Supabase Auth chosen) |
 | 13. Fleet sharing | Cross-agent playbook proposals, approve, rollback | K | none |
 
 Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit logs.
@@ -35,6 +35,7 @@ Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit lo
 - Phase 10: done (`retrack migrate`, migration reports, `POST /v1/migrations`, `GET /v1/migrations/{id}`, passing playbooks validated for the new model). Full suite: 531 passed.
 - Hardening (between Phases 10 and 11): one-round-trip ingest (`private.ingest_run`), per-project ingest rate limit, daily retention job. Full suite: 538 passed.
 - Deployed 2026-10-21: Phases 0-10 + hardening live at `https://retrack-api.vercel.app` (LLM and embeddings off). Measured live: ingest about 22 ms server median (was about 60 ms); recall 15 ms median / 26 ms p95 server-side in keyword mode; Cron processed 25/25 runs in 43 s.
+- Phase 11: built (known-fix learning, automatic unrecoverable flag, recall warnings with fixes, plan replay eligibility and demotion, SDK `memory.protect` circuit breaker and `replay_of`).
 
 ## Why this order
 - **Firewall is split.** Redaction and the taint gate (Phase 3) come before anything is embedded or distilled, so secrets never reach vectors and rule 8 in `CLAUDE.md` holds from the first playbook. The LLM-heavy checks (Phase 8) land before any external user relies on recall.

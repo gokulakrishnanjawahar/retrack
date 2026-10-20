@@ -37,3 +37,9 @@ Purpose: model providers deprecate models on fixed timelines, and newer models d
 - Fingerprint = hash of (tool_name, error_class, normalised input shape).
 - When a live failure matches a known fingerprint with a recovery playbook, the SDK can surface the recovery instead of blind retry.
 - When a fingerprint is marked `unrecoverable`, the SDK's circuit-breaker stops retries early.
+
+## Recovery and circuit breaker as built (Phase 11)
+- **Learning fixes (server, no LLM):** in a successful run, a tool step that failed and a later successful call of the same tool make a recovery: the successful tool calls in between, then the retry (e.g. "call check_delivery, then retry refunds_api"). Stored on the failure signature (`recovery_steps`, `recoveries`), once per run. Works with embeddings off.
+- **Unrecoverable:** automatically true after 5+ occurrences with no recovery ever recorded; a recorded recovery clears it. `retrack-admin set-unrecoverable --signature-id ID --value true|false|auto` overrides.
+- **Recall warnings** carry `fingerprint`, `recovery`, `recovery_steps`, `unrecoverable`; signatures with a known fix are warned about even before they recur.
+- **SDK:** `memory.protect(tools, max_same_failure=3)` wraps LangChain tools. A known failure returns its fix (`known_fix` on a returned error, `KnownFailureError` on a raised one); an unrecoverable one, or the same failure 3 times in a run, raises `UnrecoverableToolError`. Fingerprints are computed in the SDK with the same algorithm as the server (shared test vectors).

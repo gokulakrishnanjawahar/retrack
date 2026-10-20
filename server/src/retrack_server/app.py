@@ -280,7 +280,8 @@ async def recall_memory(
             "playbooks": result.playbooks,
             "warnings": result.warnings,
             "holdout": result.holdout,
-            "replay_eligible": False,
+            "replay_eligible": result.replay_eligible,
+            "replay_plan": result.replay_plan,
             "mode": result.mode,
         }
     )

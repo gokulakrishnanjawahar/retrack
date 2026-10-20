@@ -28,6 +28,8 @@ Allowed only when all hold:
 
 The agent still validates the result. Any failure on replay demotes the playbook (status back to candidate or quarantined).
 
+*As built (Phase 11):* recall sets `replay_eligible` per playbook and a top-level `replay_plan` (`playbook_id`, `version`, `steps`) when the top playbook qualifies: hybrid mode, similarity >= 0.95, at least 20 uses with at least 90% real success (not the prior), the request's `model_id` in `validated_models`, and every tool version exactly equal. Runs that follow it report `replay_of` (SDK: `rt.callback(replay_of=...)`); a failed replay sets an active playbook back to `candidate` and opens a review item.
+
 ## Learning loop
 - Record which playbooks were recalled on each run (`runs.recalled_playbook_ids`).
 - After scoring, update each recalled playbook's `uses` and `success_rate`.

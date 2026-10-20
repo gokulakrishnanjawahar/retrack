@@ -38,7 +38,15 @@ def test_recall_response_shape_and_usage(client, conn, auth, tenants):
     )
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"recall_id", "playbooks", "warnings", "holdout", "replay_eligible", "mode"}
+    assert set(body) == {
+        "recall_id",
+        "playbooks",
+        "warnings",
+        "holdout",
+        "replay_eligible",
+        "replay_plan",
+        "mode",
+    }
     assert body["replay_eligible"] is False
     served = conn.execute(
         "select recalls_served from public.usage_daily where project_id = %s", (a.project_id,)

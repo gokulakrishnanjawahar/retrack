@@ -171,9 +171,11 @@ class RetrackCallbackHandler(BaseCallbackHandler):
         tool_versions: dict[str, str] | None = None,
         trusted_tools: frozenset[str] = frozenset(),
         output_key: str | None = None,
+        replay_of: str | None = None,
     ):
         self._submit = submit
         self._output_key = output_key
+        self._replay_of = replay_of
         self._agent = agent
         self._task = task
         self._model_id = model_id
@@ -242,6 +244,7 @@ class RetrackCallbackHandler(BaseCallbackHandler):
             "tokens_out": run.tokens_out,
             "latency_ms": int((time.monotonic() - run.started) * 1000),
             **({"output": run.output} if run.output else {}),
+            **({"replay_of": str(self._replay_of)} if self._replay_of else {}),
             "steps": [{"idx": i, "type": step.type, **step.fields} for i, step in enumerate(steps)],
         }
         self._submit(payload)

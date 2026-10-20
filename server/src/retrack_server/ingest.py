@@ -61,6 +61,7 @@ def redacted_payload(run: RunIn) -> dict[str, Any]:
         "latency_ms": run.latency_ms,
         "output": redact_text(run.output)[0][:MAX_OUTPUT_CHARS] if run.output else None,
         "outcome_hint": {"outcome": hint.outcome, "source": hint.source} if hint else None,
+        "replay_of": str(run.replay_of) if run.replay_of else None,
         "steps": steps,
     }
 

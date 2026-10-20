@@ -10,6 +10,8 @@ class Memory:
     warnings: list[dict[str, Any]] = field(default_factory=list)
     holdout: bool = False
     recall_id: str | None = None
+    # Set only when every replay condition holds (docs/recall-gating.md).
+    replay_plan: dict[str, Any] | None = None
 
     @classmethod
     def from_response(cls, data: dict[str, Any]) -> "Memory":
@@ -18,7 +20,14 @@ class Memory:
             warnings=list(data.get("warnings") or []),
             holdout=bool(data.get("holdout")),
             recall_id=data.get("recall_id"),
+            replay_plan=data.get("replay_plan") if data.get("replay_eligible") else None,
         )
+
+    def protect(self, tools: list[Any], max_same_failure: int = 3) -> list[Any]:
+        """Wrap LangChain tools with known-fix hints and a circuit breaker (see recovery)."""
+        from retrack.recovery import protect_tools
+
+        return protect_tools(tools, self.warnings, max_same_failure)
 
     def __bool__(self) -> bool:
         return bool(self.playbooks or self.warnings)

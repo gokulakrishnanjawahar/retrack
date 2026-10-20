@@ -162,8 +162,10 @@ def run_benchmark(
             raise RuntimeError(f"stopped: spend ${spent:.4f} reached the ${budget_usd} cap")
         world = World(seed=seed)
         run_id = uuid.uuid4()
+        # Generous timeout: this measures memory's effect, not latency, so a slow network
+        # must not skew it (recall latency is measured separately).
         memory = (
-            rt.recall(task.text, run_id=run_id, timeout=5.0) if condition == "memory" else Memory()
+            rt.recall(task.text, run_id=run_id, timeout=30.0) if condition == "memory" else Memory()
         )
         usage = agent.run(
             world,

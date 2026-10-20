@@ -33,6 +33,10 @@ WARNING_MIN_OCCURRENCES = 2
 MAX_WARNINGS = 5
 RETIRE_AFTER_USES = 10
 RETIRE_BELOW_SUCCESS = 0.5
+# Plan replay (docs/recall-gating.md): every condition must hold.
+REPLAY_MIN_SIMILARITY = 0.95
+REPLAY_MIN_USES = 20
+REPLAY_MIN_SUCCESS = 0.9
 
 _embed_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="embed")
 
@@ -94,6 +98,8 @@ class RecallResult:
     warnings: list[dict[str, Any]] = field(default_factory=list)
     holdout: bool = False
     mode: str = "hybrid"
+    replay_eligible: bool = False
+    replay_plan: dict[str, Any] | None = None
 
 
 # Gate building blocks ----------------------------------------------------------------
@@ -141,6 +147,39 @@ def gate_score(similarity, confidence, success_rate, fresh, versions) -> float:
     return similarity * confidence * success_rate * fresh * versions
 
 
+def replay_allowed(
+    *,
+    similarity: float | None,
+    uses: int,
+    successes: int,
+    validated_models: list[str],
+    playbook_tools: dict[str, str],
+    model_id: str | None,
+    tool_versions: dict[str, str],
+) -> bool:
+    """Plan replay only for near-identical, well-proven tasks on exactly the same versions."""
+    return (
+        similarity is not None
+        and similarity >= REPLAY_MIN_SIMILARITY
+        and uses >= REPLAY_MIN_USES
+        and successes / uses >= REPLAY_MIN_SUCCESS
+        and model_id is not None
+        and model_id in (validated_models or [])
+        and all(
+            tool_versions.get(tool) == version for tool, version in (playbook_tools or {}).items()
+        )
+    )
+
+
+def recovery_text(steps: list[dict[str, Any]]) -> str | None:
+    """'call check_delivery, then retry refunds_api' from recorded recovery steps."""
+    if not steps:
+        return None
+    calls = [f"call {s['tool']}" for s in steps if not s.get("retry")]
+    retry = [f"retry {s['tool']}" for s in steps if s.get("retry")]
+    return ", then ".join(filter(None, [", ".join(calls), ", ".join(retry)]))
+
+
 def in_holdout(project_id: UUID, run_id: UUID, rate: float) -> bool:
     """Deterministic per run, so retries of the same run get the same answer."""
     digest = hashlib.sha256(f"{project_id}:{run_id}".encode()).digest()
@@ -168,12 +207,14 @@ def _embed_with_timeout(embedder: Embedder | None, text: str) -> str | None:
 def _warnings(conn, project_id, agent_id, tool_versions) -> list[dict[str, Any]]:
     rows = conn.execute(
         "select f.id, f.fingerprint, f.tool_name, f.error_class, f.input_shape, f.occurrences,"
-        " f.last_seen, f.unrecoverable, p.title"
+        " f.last_seen, f.unrecoverable, p.title, f.recovery_steps, f.recoveries"
         " from public.failure_signatures f"
         " left join public.playbooks p on p.id = f.recovery_playbook_id"
-        " where f.project_id = %s and f.agent_id = %s and f.occurrences >= %s"
+        " where f.project_id = %s and f.agent_id = %s"
+        " and (f.occurrences >= %s or f.recoveries > 0)"
         " and (cardinality(%s::text[]) = 0 or f.tool_name = any(%s::text[]))"
-        " order by f.occurrences desc, f.last_seen desc limit %s",
+        " order by f.unrecoverable desc, f.occurrences + f.recoveries desc, f.last_seen desc"
+        " limit %s",
         (
             project_id,
             agent_id,
@@ -184,10 +225,29 @@ def _warnings(conn, project_id, agent_id, tool_versions) -> list[dict[str, Any]]
         ),
     ).fetchall()
     warnings = []
-    for sig_id, fp, tool, error, shape, count, last_seen, unrecoverable, recovery in rows:
+    for (
+        sig_id,
+        fp,
+        tool,
+        error,
+        shape,
+        count,
+        last_seen,
+        unrecoverable,
+        recovery_title,
+        recovery_steps,
+        recoveries,
+    ) in rows:
+        fix = recovery_text(recovery_steps) or recovery_title
+        if unrecoverable:
+            advice = "it cannot be recovered by retrying"
+        elif fix:
+            advice = f"known fix: {fix}"
+        else:
+            advice = "plan for this"
         message = (
-            f"{tool} has failed with {error} {count} times (arguments: {shape or 'none'}); "
-            + ("it cannot be recovered by retrying" if unrecoverable else "plan for this")
+            f"{tool} has failed with {error} {count + recoveries} times"
+            f" (arguments: {shape or 'none'}); {advice}"
         )
         warnings.append(
             {
@@ -198,7 +258,9 @@ def _warnings(conn, project_id, agent_id, tool_versions) -> list[dict[str, Any]]
                 "occurrences": count,
                 "last_seen": last_seen.isoformat(),
                 "message": message,
-                "recovery": recovery,
+                "recovery": fix,
+                "recovery_steps": recovery_steps,
+                "unrecoverable": unrecoverable,
             }
         )
     return warnings
@@ -280,7 +342,16 @@ def recall(
                     version_match(models, pb_tools, request.model_id, tools),
                 )
                 if score >= threshold:
-                    scored.append((score, rrf, pb_id, version, title, pre, steps, pitfalls))
+                    replay = vector is not None and replay_allowed(
+                        similarity=float(similarity) if similarity is not None else None,
+                        uses=uses,
+                        successes=successes,
+                        validated_models=models,
+                        playbook_tools=pb_tools,
+                        model_id=request.model_id,
+                        tool_versions=tools,
+                    )
+                    scored.append((score, rrf, pb_id, version, title, pre, steps, pitfalls, replay))
             scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
             result = RecallResult(
                 mode="hybrid" if vector is not None else "keyword",
@@ -293,13 +364,22 @@ def recall(
                         "preconditions": pre,
                         "steps": steps,
                         "pitfalls": pitfalls,
+                        "replay_eligible": replay,
                     }
-                    for score, _rrf, pb_id, version, title, pre, steps, pitfalls in scored[
+                    for score, _rrf, pb_id, version, title, pre, steps, pitfalls, replay in scored[
                         : request.max_playbooks
                     ]
                 ],
                 warnings=_warnings(conn, project_id, agent_id, tools),
             )
+            if result.playbooks and result.playbooks[0]["replay_eligible"]:
+                top = result.playbooks[0]
+                result.replay_eligible = True
+                result.replay_plan = {
+                    "playbook_id": top["id"],
+                    "version": top["version"],
+                    "steps": top["steps"],
+                }
 
         result.recall_id = str(
             conn.execute(
@@ -325,17 +405,36 @@ def recall(
 
 
 def apply_learning(conn: psycopg.Connection, project_id: UUID, run_id: UUID) -> None:
-    """Count a recalled run's outcome towards its playbooks, exactly once per outcome."""
+    """Count a recalled run's outcome towards its playbooks, exactly once per outcome, and
+    demote a replayed playbook whose replay failed."""
     with pipeline_scope(conn, project_id):
         row = conn.execute(
-            "select recalled_playbook_ids, outcome, recall_counted_as from public.runs"
+            "select recalled_playbook_ids, outcome, recall_counted_as, replay_of from public.runs"
             " where project_id = %s and id = %s",
             (project_id, run_id),
         ).fetchone()
         if row is None:
             raise LookupError(f"run {run_id} not found in project {project_id}")
-        playbook_ids, outcome, counted = row
-        if not playbook_ids or outcome not in ("success", "failure") or counted == outcome:
+        playbook_ids, outcome, counted, replay_of = row
+        if outcome not in ("success", "failure") or counted == outcome:
+            return
+        if replay_of is not None and outcome == "failure":
+            demoted = conn.execute(
+                "update public.playbooks set status = 'candidate'"
+                " where project_id = %s and id = %s and status = 'active' returning id",
+                (project_id, replay_of),
+            ).fetchone()
+            if demoted:
+                conn.execute(
+                    "insert into public.review_queue (project_id, object_type, object_id, reason)"
+                    " values (%s, 'playbook', %s, %s)",
+                    (project_id, replay_of, f"plan replay failed on run {run_id}"),
+                )
+        if not playbook_ids:
+            conn.execute(
+                "update public.runs set recall_counted_as = %s where project_id = %s and id = %s",
+                (outcome, project_id, run_id),
+            )
             return
         new_use = 1 if counted is None else 0
         success_delta = int(outcome == "success") - int(counted == "success")

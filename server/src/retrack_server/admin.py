@@ -110,6 +110,16 @@ def resolve_review(
         conn.execute("update public.playbooks set status = 'retired' where id = %s", (object_id,))
 
 
+def set_unrecoverable(conn: psycopg.Connection, signature_id: UUID, value: bool | None) -> None:
+    """Force a failure signature's unrecoverable flag, or None to return to the automatic
+    rule (5+ occurrences and never recovered)."""
+    conn.execute(
+        "update public.failure_signatures set unrecoverable_override = %s,"
+        " unrecoverable = coalesce(%s, occurrences >= 5 and recoveries = 0) where id = %s",
+        (value, value, signature_id),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="retrack-admin")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -132,6 +142,9 @@ def main(argv: list[str] | None = None) -> int:
         rv.add_argument("--item-id", required=True, type=UUID)
         rv.add_argument("--reviewer", required=True)
         rv.add_argument("--note", default="")
+    su = commands.add_parser("set-unrecoverable", help="override a failure's circuit breaker")
+    su.add_argument("--signature-id", required=True, type=UUID)
+    su.add_argument("--value", required=True, choices=["true", "false", "auto"])
     args = parser.parse_args(argv)
 
     url, pepper = os.environ.get("DATABASE_URL"), os.environ.get("RETRACK_KEY_PEPPER")
@@ -162,6 +175,10 @@ def main(argv: list[str] | None = None) -> int:
                 note=args.note,
             )
             print("resolved")
+        elif args.command == "set-unrecoverable":
+            choice = {"true": True, "false": False, "auto": None}[args.value]
+            set_unrecoverable(conn, args.signature_id, choice)
+            print("updated")
         elif args.command == "set-trust":
             set_trust(conn, args.project_id, args.tools.split(","), args.task_trusted)
             print("trust settings updated")

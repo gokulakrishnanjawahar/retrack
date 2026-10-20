@@ -30,11 +30,12 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | AI-judged eval assertions | Deferred until customers can bring their own LLM key (decided 2026-10-20) | `retrack test` checks tools, order, known failures and expected text deterministically |
 | Retention vs provenance | Runs supporting a live playbook are kept until it is retired; all other runs follow `retention_days` (decided 2026-10-21, may be revisited) | Keeps live memory traceable to its sources |
 | Ingest rate limit | 600 runs per minute per project by default (`projects.ingest_rate_limit`) | Fixed one-minute windows in `ingest_counters` |
+| Dashboard login | Supabase Auth (decided 2026-10-21) | Same database; row-level security uses the logged-in user; no extra vendor |
+| Dashboard design goal | Dynamic and instantly attractive and credible (Gokul, 2026-10-21) | Live elements, motion, polished data visualisation |
 | ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)
 | Area | Options under consideration | Blocks |
 |---|---|---|
-| Dashboard login | Supabase Auth, custom, or Clerk | Block L |
 | Open vs closed source, licence | Decide after the product is built; repo stays private until then | Repo structure, licence file |
 | Object storage for traces | Supabase Storage likely | Trace archive |

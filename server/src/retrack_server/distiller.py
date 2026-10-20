@@ -37,6 +37,12 @@ PROMOTION_MIN_CONFIDENCE = 0.8
 MERGE_SIMILARITY = 0.92
 # Playbooks this similar to a new one form the baseline for the tool-anomaly check.
 ANOMALY_SIMILARITY = 0.75
+# A failure seen this often with no recovery ever recorded is marked unrecoverable.
+UNRECOVERABLE_AFTER = 5
+_AUTO_UNRECOVERABLE = (
+    "unrecoverable = coalesce(unrecoverable_override,"
+    f" occurrences >= {UNRECOVERABLE_AFTER} and recoveries = 0)"
+)
 # Names shown to agents in warnings must be plain identifiers, never free text.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]{0,99}$")
 
@@ -304,8 +310,77 @@ def _quarantined(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
     return {"result": "skipped:quarantined"}
 
 
+def _clean_name(name: str | None, default: str) -> str:
+    return name if _IDENTIFIER.match(name or "") else default
+
+
+def _learn_recoveries(conn: psycopg.Connection, state: DistillState) -> None:
+    """A tool that failed and later succeeded in the same successful run taught a fix:
+    the tool steps in between, then the retry. Recorded once per run and failure."""
+    tool_steps = [s for s in state["steps"] if s["type"] == "tool"]
+    seen: set[str] = set()
+    for i, failed in enumerate(tool_steps):
+        if failed["result_class"] != "error":
+            continue
+        tool = _clean_name(failed["tool_name"], "unknown_tool")
+        retry = next(
+            (
+                j
+                for j in range(i + 1, len(tool_steps))
+                if tool_steps[j]["tool_name"] == failed["tool_name"]
+                and tool_steps[j]["result_class"] == "ok"
+            ),
+            None,
+        )
+        error = _clean_name(failed["error_class"], "UnknownError")
+        digest = fingerprint(tool, error, failed["args"])
+        if retry is None or digest in seen:
+            continue
+        seen.add(digest)
+        already = conn.execute(
+            "select 1 from public.failure_signatures f join public.provenance pv"
+            " on pv.project_id = f.project_id and pv.object_type = 'failure_signature'"
+            " and pv.object_id = f.id"
+            " where f.project_id = %s and f.fingerprint = %s and %s = any(pv.source_run_ids)",
+            (state["project_id"], digest, state["run_id"]),
+        ).fetchone()
+        if already:
+            continue
+        steps = [
+            {"tool": _clean_name(s["tool_name"], "unknown_tool")}
+            for s in tool_steps[i + 1 : retry]
+            if s["result_class"] == "ok"
+        ] + [{"tool": tool, "retry": True}]
+        signature_id = conn.execute(
+            "insert into public.failure_signatures (project_id, agent_id, tool_name, error_class,"
+            " input_shape, fingerprint, occurrences, recoveries, recovery_steps, example_run_id)"
+            " values (%s, %s, %s, %s, %s, %s, 0, 1, %s, %s)"
+            " on conflict (project_id, fingerprint) do update set"
+            "  recoveries = failure_signatures.recoveries + 1,"
+            "  recovery_steps = case when failure_signatures.recovery_steps = '[]'::jsonb"
+            "    then excluded.recovery_steps else failure_signatures.recovery_steps end"
+            " returning id",
+            (
+                state["project_id"],
+                state["run"]["agent_id"],
+                tool,
+                error,
+                input_shape(failed["args"] or {}),
+                digest,
+                Jsonb(steps),
+                state["run_id"],
+            ),
+        ).fetchone()[0]
+        conn.execute(
+            f"update public.failure_signatures set {_AUTO_UNRECOVERABLE} where id = %s",
+            (signature_id,),
+        )
+        _provenance(conn, state, "failure_signature", signature_id)
+
+
 def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
     conn = _conn(config)
+    _learn_recoveries(conn, state)
     embedder: Embedder | None = config["configurable"]["embedder"]
     llm: LLMClient | None = config["configurable"]["llm"]
     run = state["run"]
@@ -494,6 +569,10 @@ def _failure(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
             state["run_id"],
         ),
     ).fetchone()[0]
+    conn.execute(
+        f"update public.failure_signatures set {_AUTO_UNRECOVERABLE} where id = %s",
+        (signature_id,),
+    )
     _provenance(conn, state, "failure_signature", signature_id)
     _mark(conn, state, "failure")
     return {"result": "failure_signature"}

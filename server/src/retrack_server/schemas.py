@@ -48,6 +48,8 @@ class RunIn(BaseModel):
     outcome_hint: OutcomeHint | None = None
     # The agent's final answer; redacted and truncated to MAX_OUTPUT_CHARS when stored.
     output: Annotated[str, StringConstraints(max_length=200_000)] | None = None
+    # The playbook whose plan this run replayed (Phase 11); a failed replay demotes it.
+    replay_of: UUID | None = None
     steps: list[StepIn] = Field(default_factory=list, max_length=MAX_STEPS)
 
     @model_validator(mode="after")

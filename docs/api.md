@@ -35,6 +35,7 @@ One run = one finished agent task, sent by the SDK after the run. Fields describ
   "tokens_in": 1200, "tokens_out": 300, "cost_usd": 0.004, "latency_ms": 5400,
   "outcome_hint": {"outcome": "success", "source": "test"},
   "output": "Refunded order #123; the money reaches your card in 5-7 days.",
+  "replay_of": "playbook uuid when the run followed a replay plan (optional)",
   "steps": [
     {"idx": 0, "type": "tool", "tool_name": "orders_api", "args": {"order_id": "123"},
      "result_class": "ok", "error_class": null, "latency_ms": 120, "input_trust": "untrusted"}
@@ -82,7 +83,7 @@ Resolution: the highest-ranked source wins (test > event > feedback > judge); wi
   "mode": "hybrid"
 }
 ```
-`mode` is `hybrid` (vectors + keywords), `keyword` (embeddings off or slower than 150 ms), `holdout` or `no_agent`. Only `active` playbooks are ever returned. Warnings are failure signatures seen at least twice for the agent's tools.
+Warnings also carry `recovery`, `recovery_steps` and `unrecoverable`; playbooks carry `replay_eligible`; `replay_plan` is set when plan replay is allowed (Phase 11). `mode` is `hybrid` (vectors + keywords), `keyword` (embeddings off or slower than 150 ms), `holdout` or `no_agent`. Only `active` playbooks are ever returned. Warnings are failure signatures seen at least twice for the agent's tools.
 When `holdout` is true, return no memory and mark the run so metrics can compare.
 
 ## SDK surface (Python, sketch)

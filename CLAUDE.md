@@ -27,7 +27,7 @@ This file is short on purpose. Before any feature work, read the relevant file i
 - **Job queue:** pgmq (Supabase Queues) in the same database.
 - **SDK:** Python first (TypeScript later). Integrates with LangGraph.
 - **Internal pipelines** (firewall, scorer, distiller): LangGraph.
-- **Dashboard:** Next.js.
+- **Dashboard:** Next.js, login with Supabase Auth.
 - **SDK auth:** per-project API keys, stored hashed.
 - **Usage metering:** simple daily counters in Postgres.
 - **Backend:** FastAPI, hosted on Vercel in `bom1` (Mumbai). Queue workers are triggered every minute by Supabase Cron calling `/internal/drain`.
@@ -43,7 +43,6 @@ This file is short on purpose. Before any feature work, read the relevant file i
 
 Do not pick any of these yourself. If a task depends on one, stop and ask. Full list and context in `docs/decisions.md`.
 
-- Dashboard login (Supabase Auth, custom, or Clerk)
 - Open source vs closed source, and licence
 
 When an open decision blocks you, write code behind an interface (e.g. an `Embedder` or `LLMClient` protocol) only if Gokul agrees.

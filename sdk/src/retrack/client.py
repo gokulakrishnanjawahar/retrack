@@ -69,12 +69,17 @@ class Retrack:
             logger.exception("retrack: could not start sender; capture disabled")
 
     def callback(
-        self, task: str | None = None, output_key: str | None = None
+        self,
+        task: str | None = None,
+        output_key: str | None = None,
+        replay_of: str | None = None,
     ) -> RetrackCallbackHandler:
         """A LangChain/LangGraph callback handler.
 
         `task` overrides the task text derived from the inputs; `output_key` names the
-        graph-state field holding the final answer (default: the last AI message).
+        graph-state field holding the final answer (default: the last AI message);
+        `replay_of` is the playbook id when the run follows `memory.replay_plan`, so a
+        failed replay can demote that playbook.
         """
         return RetrackCallbackHandler(
             self._submit,
@@ -84,6 +89,7 @@ class Retrack:
             tool_versions=self._tool_versions,
             trusted_tools=self._trusted_tools,
             output_key=output_key,
+            replay_of=replay_of,
         )
 
     def recall(
