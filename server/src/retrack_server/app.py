@@ -93,6 +93,16 @@ def get_embedder(settings: Settings) -> Embedder | None:
     return embedder_from_settings(settings)
 
 
+def llm_dependency(settings: Annotated[Settings, Depends(get_settings)]) -> LLMClient | None:
+    return get_llm(settings)
+
+
+def embedder_dependency(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Embedder | None:
+    return get_embedder(settings)
+
+
 def get_pool(settings: Settings) -> ConnectionPool:
     """One connection pool per server instance, opened on first use and reused by requests."""
     global _pool
@@ -156,6 +166,8 @@ async def ingest_run(
 async def internal_drain(
     conn: Annotated[psycopg.Connection, Depends(get_conn)],
     settings: Annotated[Settings, Depends(get_settings)],
+    llm: Annotated[LLMClient | None, Depends(llm_dependency)],
+    embedder: Annotated[Embedder | None, Depends(embedder_dependency)],
     x_retrack_worker_secret: Annotated[str | None, Header()] = None,
 ) -> JSONResponse:
     """Worker entry point, called by Supabase Cron. Never accepts customer API keys."""
@@ -165,9 +177,7 @@ async def internal_drain(
         x_retrack_worker_secret.encode(), settings.worker_secret.encode()
     ):
         raise ApiError(401, "unauthorized", "missing or invalid worker secret")
-    result = await run_in_threadpool(
-        drain, conn, llm=get_llm(settings), embedder=get_embedder(settings)
-    )
+    result = await run_in_threadpool(drain, conn, llm=llm, embedder=embedder)
     return JSONResponse(
         {
             "processed": result.processed,
@@ -237,7 +247,7 @@ async def recall_memory(
     request: Request,
     conn: Annotated[psycopg.Connection, Depends(get_conn)],
     project_id: Annotated[UUID, Depends(authenticated_project)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    embedder: Annotated[Embedder | None, Depends(embedder_dependency)],
 ) -> JSONResponse:
     """Gated playbooks and failure warnings for the task an agent is about to do."""
     body = await request.body()
@@ -247,9 +257,7 @@ async def recall_memory(
         recall_request = RecallIn.model_validate_json(body)
     except ValidationError as exc:
         raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
-    result = await run_in_threadpool(
-        recall, conn, project_id, recall_request, get_embedder(settings)
-    )
+    result = await run_in_threadpool(recall, conn, project_id, recall_request, embedder)
     return JSONResponse(
         {
             "recall_id": result.recall_id,

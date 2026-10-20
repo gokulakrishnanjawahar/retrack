@@ -86,8 +86,8 @@ from retrack import Retrack
 rt = Retrack(api_key=os.environ["RETRACK_API_KEY"], agent="support-agent")
 graph = builder.compile()
 result = graph.invoke(inputs, config={"callbacks": [rt.callback()]})  # capture
-memory = rt.recall(task, run_id=run_id)                              # before task; 400 ms, fails open
-prompt_text = memory.as_prompt()                                     # or builder.add_node(rt.recall_node())
+memory = rt.recall(task, run_id=run_id)  # before task; 400 ms, fails open
+prompt_text = memory.as_prompt()  # or builder.add_node(rt.recall_node())
 handler = rt.callback()  # handler.last_run_id after a run
 rt.feedback(handler.last_run_id, outcome="success", source="test")
 ```

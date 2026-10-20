@@ -24,10 +24,12 @@ dev = [
     "retrack-server",
     "uvicorn>=0.54.0",
     "langgraph>=1.2.16",
+    "langchain-anthropic>=1.7.6",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "sdk/tests", "server/tests"]
+pythonpath = ["."]
 addopts = ["--import-mode=importlib"]
 markers = ["slow: seeds large data sets (run with -m slow, or everything by default)"]
 

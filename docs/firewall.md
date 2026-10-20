@@ -13,7 +13,7 @@ Persistent agent memory is an active attack surface. Research in 2026 (MemGhost,
 ## Rules
 1. A tainted run cannot directly create or update an **active** playbook.
 2. Tainted-run candidates go to `review_queue` unless they pass all automatic checks below; even then they start as `candidate`, not `active`.
-3. Promotion to `active` requires either human approval or N independent trusted successes (`REQUIRED_TRUSTED_SUCCESSES`, default 3). Memory with quarantined sources needs a human. Implemented in `retrack_server.firewall.promotion_allowed` and enforced in the database by a trigger on `playbooks` (Phase 5).
+3. Promotion to `active` requires either human approval or N independent trusted successes (`REQUIRED_TRUSTED_SUCCESSES`, default 3). A trusted success counts only at hard-signal strength, confidence >= 0.8 (tests, business events, user feedback; decided 2026-10-20); AI-judge verdicts add support but never promote. Promotion is automatic: the distiller promotes a candidate as soon as the rule holds and no review item is open. Memory with quarantined sources needs a human. Implemented in `retrack_server.firewall.promotion_allowed` and enforced in the database by a trigger on `playbooks` (Phase 5).
 
 ## Automatic checks
 - **Secret scanning:** regex and entropy checks for API keys, tokens, private keys, passwords; redact before storage and before embedding.

@@ -24,11 +24,14 @@ from psycopg.types.json import Jsonb
 
 from retrack_server.db import increment_usage, pipeline_scope
 from retrack_server.embeddings import Embedder, embed_cached
-from retrack_server.firewall import initial_status, needs_review
+from retrack_server.firewall import initial_status, needs_review, promotion_allowed
 from retrack_server.judge import build_judge_prompt
 from retrack_server.llm import LLMClient
 
 MIN_CONFIDENCE = 0.7
+# Only hard-signal strength (tests 1.0, events 0.9, user feedback 0.8) counts towards
+# automatic promotion; AI-judge verdicts (capped at 0.7) support but never promote.
+PROMOTION_MIN_CONFIDENCE = 0.8
 MERGE_SIMILARITY = 0.92
 
 PLAYBOOK_SCHEMA: dict[str, Any] = {
@@ -233,6 +236,41 @@ def _review(conn: psycopg.Connection, state: DistillState, object_id: UUID, reas
         )
 
 
+def _counts_for_promotion(run: dict[str, Any]) -> int:
+    return int(run["taint"] == "trusted" and (run["confidence"] or 0.0) >= PROMOTION_MIN_CONFIDENCE)
+
+
+def _maybe_promote(conn: psycopg.Connection, state: DistillState, playbook_id: UUID) -> None:
+    """Promote a candidate once the promotion rule holds and nothing awaits review.
+
+    The database trigger checks the same rule again before allowing 'active'.
+    """
+    row = conn.execute(
+        "select status, trusted_support, untrusted_sources, quarantined_sources,"
+        " passed_automatic_checks,"
+        " exists (select 1 from public.review_queue r where r.project_id = p.project_id"
+        "   and r.object_id = p.id and r.status = 'open')"
+        " from public.playbooks p where project_id = %s and id = %s",
+        (state["project_id"], playbook_id),
+    ).fetchone()
+    status, trusted, untrusted, quarantined, checks_passed, under_review = row
+    taints = ["trusted"] * trusted + ["untrusted"] * untrusted + ["quarantined"] * quarantined
+    if (
+        status == "candidate"
+        and not under_review
+        and promotion_allowed(
+            taints,
+            human_approved=False,
+            trusted_successes=trusted,
+            passed_automatic_checks=checks_passed,
+        )
+    ):
+        conn.execute(
+            "update public.playbooks set status = 'active' where project_id = %s and id = %s",
+            (state["project_id"], playbook_id),
+        )
+
+
 def _taint_reasons(taint: str) -> list[str]:
     return [f"source run is {taint}"] if needs_review([taint]) else []
 
@@ -271,7 +309,7 @@ def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
             " where project_id = %s and id = %s",
             (
                 run["confidence"],
-                int(taint == "trusted"),
+                _counts_for_promotion(run),
                 int(taint == "untrusted"),
                 int(taint == "quarantined"),
                 state["project_id"],
@@ -280,6 +318,7 @@ def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
         )
         _provenance(conn, state, "playbook", match[0])
         _review(conn, state, match[0], _taint_reasons(taint))
+        _maybe_promote(conn, state, match[0])
         _mark(conn, state, "success")
         return {"result": "merged"}
 
@@ -326,7 +365,7 @@ def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
             content["pitfalls"],
             vector,
             embedder.model,
-            int(taint == "trusted"),
+            _counts_for_promotion(run),
             int(taint == "untrusted"),
             int(taint == "quarantined"),
             [run["model_id"]],
@@ -347,6 +386,7 @@ def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
         [f"instruction-shaped text: {', '.join(flags)}"] if flags else []
     )
     _review(conn, state, playbook_id, reasons)
+    _maybe_promote(conn, state, playbook_id)
     increment_usage(conn, distillations=1)
     _mark(conn, state, "success")
     return {"result": "created"}
