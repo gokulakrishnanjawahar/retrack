@@ -606,3 +606,105 @@ export async function listRecalls(projectId: string): Promise<{
     tasks: Object.fromEntries(runRows.map((r) => [r.id, r.task_text])),
   };
 }
+
+// Regression and migration -----------------------------------------------------------------
+
+export type Assertion = { type: string; tools?: string[]; tool?: string; error_class?: string; text?: string };
+
+export type EvalCase = {
+  id: string;
+  agent_id: string;
+  source: "playbook" | "failure";
+  source_id: string;
+  input: { task?: string };
+  expected_assertions: Assertion[];
+  critical: boolean;
+  status: "active" | "retired";
+  last_result: "passed" | "failed" | null;
+  last_model_id: string | null;
+  last_run_at: string | null;
+};
+
+export async function listEvalCases(projectId: string): Promise<EvalCase[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("eval_cases")
+    .select("id, agent_id, source, source_id, input, expected_assertions, critical, status, last_result, last_model_id, last_run_at")
+    .eq("project_id", projectId)
+    .eq("status", "active")
+    .order("critical", { ascending: false })
+    .order("last_run_at", { ascending: false, nullsFirst: false })
+    .limit(500)
+    .returns<EvalCase[]>();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export type TestRun = { id: string; model: string | null; migrationId: string | null; passed: number; total: number; at: string };
+
+export async function listTestRuns(projectId: string): Promise<TestRun[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("eval_results")
+    .select("test_run_id, passed, model_id, migration_id, created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(3000)
+    .returns<{ test_run_id: string; passed: boolean; model_id: string | null; migration_id: string | null; created_at: string }[]>();
+  if (error) throw new Error(error.message);
+  const runs = new Map<string, TestRun>();
+  for (const row of data) {
+    const run = runs.get(row.test_run_id) ?? { id: row.test_run_id, model: row.model_id, migrationId: row.migration_id, passed: 0, total: 0, at: row.created_at };
+    run.total += 1;
+    run.passed += row.passed ? 1 : 0;
+    if (row.created_at < run.at) run.at = row.created_at;
+    runs.set(row.test_run_id, run);
+  }
+  return [...runs.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30);
+}
+
+export type MigrationCounts = Partial<Record<"passes" | "needs_relearning" | "breaks" | "fixed" | "returns", number>>;
+
+export type MigrationReport = {
+  id: string;
+  agent_id: string;
+  from_model: string | null;
+  to_model: string;
+  model_applied: boolean;
+  status: "running" | "completed";
+  summary: {
+    counts?: MigrationCounts;
+    items?: { case_id: string; source: "playbook" | "failure"; source_id: string; title: string; result: keyof MigrationCounts; failures: string[] }[];
+  } | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+const MIGRATION_COLUMNS = "id, agent_id, from_model, to_model, model_applied, status, summary, created_at, completed_at";
+
+export async function listMigrations(projectId: string): Promise<MigrationReport[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("migration_reports")
+    .select(MIGRATION_COLUMNS)
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(50)
+    .returns<MigrationReport[]>();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function getMigration(projectId: string, migrationId: string): Promise<MigrationReport> {
+  if (!UUID_RE.test(migrationId)) notFound();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("migration_reports")
+    .select(MIGRATION_COLUMNS)
+    .eq("project_id", projectId)
+    .eq("id", migrationId)
+    .maybeSingle<MigrationReport>();
+  if (error) throw new Error(error.message);
+  if (!data) notFound();
+  return data;
+}

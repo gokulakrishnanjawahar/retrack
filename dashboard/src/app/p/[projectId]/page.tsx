@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { CodeBlock, quickstartSnippets } from "@/components/code-block";
+import { CodeBlock } from "@/components/code-block";
+import { quickstartSnippets } from "@/lib/snippets";
 import { LiveDot } from "@/components/fx/live-dot";
 import { KpiCard } from "@/components/overview/kpi-card";
 import { LiveRunFeed } from "@/components/overview/live-run-feed";

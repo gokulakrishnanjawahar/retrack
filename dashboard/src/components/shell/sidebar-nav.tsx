@@ -1,6 +1,6 @@
 "use client";
 
-import { BrainCircuit, Gauge, History, KeyRound, ListChecks, Radar, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, BrainCircuit, FlaskConical, Gauge, History, KeyRound, ListChecks, Radar, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -20,6 +20,13 @@ export function SidebarNav({ projectId, superAdmin, openReviews }: { projectId: 
         { href: `${base}/memory`, label: "Memory", icon: BrainCircuit },
         { href: `${base}/review`, label: "Review", icon: ListChecks, badge: openReviews },
         { href: `${base}/recalls`, label: "Recalls", icon: Radar },
+      ],
+    },
+    {
+      title: "Quality",
+      items: [
+        { href: `${base}/regression`, label: "Regression", icon: FlaskConical },
+        { href: `${base}/migrations`, label: "Model migrations", icon: ArrowRightLeft },
       ],
     },
     {
