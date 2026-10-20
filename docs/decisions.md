@@ -28,6 +28,8 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | LLM keys at launch | Customers can bring their own LLM key (encrypted, never logged); Retrack's own key is used for development and testing | Testing budget about $5 |
 | Continuous integration | Deferred (decided 2026-10-20). The poisoning suite runs locally in the full test suite before each phase is committed; revisit CI when there are collaborators or customers | Deviation from firewall.md ("run it in CI") |
 | AI-judged eval assertions | Deferred until customers can bring their own LLM key (decided 2026-10-20) | `retrack test` checks tools, order, known failures and expected text deterministically |
+| Retention vs provenance | Runs supporting a live playbook are kept until it is retired; all other runs follow `retention_days` (decided 2026-10-21, may be revisited) | Keeps live memory traceable to its sources |
+| Ingest rate limit | 600 runs per minute per project by default (`projects.ingest_rate_limit`) | Fixed one-minute windows in `ingest_counters` |
 | ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)

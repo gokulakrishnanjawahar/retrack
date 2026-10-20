@@ -43,7 +43,7 @@ One run = one finished agent task, sent by the SDK after the run. Fields describ
 ```
 Limits: request body at most 1 MB (413), at most 500 steps (422). The server redacts secrets and personal data in `task`, `args` and `output` before storing them. `output` (optional, added 2026-10-19) is the agent's final answer: the SDK takes the last AI message, or a state field named with `rt.callback(output_key=...)`; it is truncated to 4,000 characters. The judge checks it against the steps, so a claimed success with a failed key step is a failure. Hand-offs to a human are judged `unknown`. `outcome_hint.source` is one of `test`, `feedback`, `event`.
 
-Response `202`: `{"id": "...", "duplicate": false}`; `duplicate` is true when the run id was already stored for this project.
+Response `202`: `{"id": "...", "duplicate": false}`; `duplicate` is true when the run id was already stored for this project. `429 rate_limited` with a `Retry-After` header when the project exceeds its runs-per-minute limit.
 
 ## Feedback request (Phase 4)
 `POST /v1/feedback` attaches a late outcome signal to a run of the key's project.

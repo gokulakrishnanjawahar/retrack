@@ -230,3 +230,26 @@ def test_tool_results_are_redacted_and_truncated(client, conn, api_key, run_payl
     ).fetchone()[0]
     assert stored.startswith("Found order for <EMAIL>")
     assert len(stored) <= 1000
+
+
+# Rate limiting (hardening) ------------------------------------------------------------
+
+
+def test_rate_limit_returns_429_with_retry_after(client, conn, api_key, tenants, run_payload):
+    a, _ = tenants
+    conn.execute("update public.projects set ingest_rate_limit = 2 where id = %s", (a.project_id,))
+    assert post_run(client, api_key, run_payload()).status_code == 202
+    assert post_run(client, api_key, run_payload()).status_code == 202
+    limited = post_run(client, api_key, run_payload())
+    assert limited.status_code == 429
+    assert limited.json()["error"]["code"] == "rate_limited"
+    assert 1 <= int(limited.headers["Retry-After"]) <= 60
+
+
+def test_rate_limits_are_per_project(client, conn, api_key, tenants, run_payload):
+    a, b = tenants
+    conn.execute("update public.projects set ingest_rate_limit = 1 where id = %s", (a.project_id,))
+    other_key = create_api_key(conn, b.project_id, "sdk", PEPPER)
+    assert post_run(client, api_key, run_payload()).status_code == 202
+    assert post_run(client, other_key, run_payload()).status_code == 202
+    assert post_run(client, api_key, run_payload()).status_code == 429

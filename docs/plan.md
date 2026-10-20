@@ -33,6 +33,7 @@ Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit lo
 - Phase 8: done locally (injection heuristics on every run, LLM classifier on the memory write path, tool-anomaly check, quarantine and review via `retrack-admin`, findings audit trail, poisoning suite of 105 cases). CI deferred. Full suite: 500 passed. Deploy pending.
 - Phase 9: built (eval cases from memory via triggers, `GET /v1/eval-cases`, `POST /v1/eval-results`, `retrack test` command, customer GitHub Action template). AI-judged assertions deferred. Full suite: 519 passed.
 - Phase 10: done (`retrack migrate`, migration reports, `POST /v1/migrations`, `GET /v1/migrations/{id}`, passing playbooks validated for the new model). Full suite: 531 passed.
+- Hardening (between Phases 10 and 11): one-round-trip ingest (`private.ingest_run`), per-project ingest rate limit, daily retention job.
 
 ## Why this order
 - **Firewall is split.** Redaction and the taint gate (Phase 3) come before anything is embedded or distilled, so secrets never reach vectors and rule 8 in `CLAUDE.md` holds from the first playbook. The LLM-heavy checks (Phase 8) land before any external user relies on recall.

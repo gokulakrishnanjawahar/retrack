@@ -1,4 +1,10 @@
-"""Storing an ingested run: run, steps, queue message and usage, in one transaction."""
+"""Storing an ingested run (POST /v1/runs).
+
+Redaction happens here, before anything leaves the process. Storage is one database
+function (private.store_run_payload): run, steps, outcome hint, queue message and usage
+in one transaction. The public endpoint calls private.ingest_run, which also checks the
+API key and the project's rate limit, and sends it in a single batched round trip.
+"""
 
 import hashlib
 import json
@@ -8,10 +14,10 @@ from uuid import UUID
 import psycopg
 from psycopg.types.json import Jsonb
 
-from retrack_server.db import enqueue_run, increment_usage, project_scope
+from retrack_server.api_keys import InvalidKeyFormat, hash_key, key_prefix
+from retrack_server.db import project_scope
 from retrack_server.redaction import redact_text, redact_value
 from retrack_server.schemas import MAX_OUTPUT_CHARS, MAX_RESULT_CHARS, RunIn
-from retrack_server.scoring import add_signal
 
 
 def args_hash(args: dict[str, Any]) -> str:
@@ -19,96 +25,75 @@ def args_hash(args: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def _agent_id(conn: psycopg.Connection, project_id: UUID, name: str) -> UUID:
-    row = conn.execute(
-        "insert into public.agents (project_id, name) values (%s, %s)"
-        " on conflict (project_id, name) do nothing returning id",
-        (project_id, name),
-    ).fetchone()
-    if row is None:
-        row = conn.execute(
-            "select id from public.agents where project_id = %s and name = %s",
-            (project_id, name),
-        ).fetchone()
-    return row[0]
+def redacted_payload(run: RunIn) -> dict[str, Any]:
+    """The run as stored: task, arguments, results and answer with secrets and PII removed."""
+    steps = []
+    for step in run.steps:
+        args = redact_value(step.args)[0]
+        steps.append(
+            {
+                "idx": step.idx,
+                "type": step.type,
+                "tool_name": step.tool_name,
+                "args_hash": args_hash(args),
+                "args_redacted": args,
+                "result_class": step.result_class,
+                "error_class": step.error_class,
+                "latency_ms": step.latency_ms,
+                "tokens_in": step.tokens_in,
+                "tokens_out": step.tokens_out,
+                "input_trust": step.input_trust,
+                "result_redacted": redact_text(step.result)[0][:MAX_RESULT_CHARS]
+                if step.result
+                else None,
+            }
+        )
+    hint = run.outcome_hint
+    return {
+        "id": str(run.id),
+        "agent": run.agent,
+        "task": redact_text(run.task)[0],
+        "model_id": run.model_id,
+        "tool_versions": run.tool_versions,
+        "tokens_in": run.tokens_in,
+        "tokens_out": run.tokens_out,
+        "cost_usd": run.cost_usd,
+        "latency_ms": run.latency_ms,
+        "output": redact_text(run.output)[0][:MAX_OUTPUT_CHARS] if run.output else None,
+        "outcome_hint": {"outcome": hint.outcome, "source": hint.source} if hint else None,
+        "steps": steps,
+    }
+
+
+def ingest(conn: psycopg.Connection, secret: str, pepper: str, run: RunIn) -> dict[str, Any]:
+    """Authenticate, rate-limit and store a run in one round trip.
+
+    Returns {"status": "stored" | "duplicate" | "unauthorized" | "rate_limited", ...}.
+    """
+    try:
+        prefix = key_prefix(secret)
+    except InvalidKeyFormat:
+        return {"status": "unauthorized"}
+    payload = Jsonb(redacted_payload(run))
+    with conn.transaction():
+        with conn.pipeline():
+            conn.execute("set local role retrack_api")
+            cursor = conn.execute(
+                "select private.ingest_run(%s, %s, %s)", (prefix, hash_key(secret, pepper), payload)
+            )
+            conn.execute("select set_config('app.project_id', '', true)")
+            conn.execute("reset role")
+        return cursor.fetchone()[0]
 
 
 def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
-    """Store a run for a project. Returns True if this run id was already stored."""
-    hint = run.outcome_hint
-    # Redact before anything is stored: raw secrets and personal data never reach the database.
-    task_text, _ = redact_text(run.task)
-    output_text = redact_text(run.output)[0][:MAX_OUTPUT_CHARS] if run.output else None
-    redacted_args = [redact_value(step.args)[0] for step in run.steps]
-    redacted_results = [
-        redact_text(step.result)[0][:MAX_RESULT_CHARS] if step.result else None
-        for step in run.steps
-    ]
-    with project_scope(conn, project_id):
-        agent_id = _agent_id(conn, project_id, run.agent)
-        # Link the recalls made for this run id (learning loop and holdout metrics).
-        recalled_ids, holdout = conn.execute(
-            "select coalesce(array_agg(distinct p) filter (where p is not null), '{}'),"
-            " coalesce(bool_or(r.holdout), false)"
-            " from public.recalls r left join lateral unnest(r.playbook_ids) p on true"
-            " where r.project_id = %s and r.run_id = %s",
-            (project_id, run.id),
-        ).fetchone()
-        inserted = conn.execute(
-            "insert into public.runs (project_id, id, agent_id, task_text, model_id,"
-            " tool_versions, tokens_in, tokens_out, cost_usd, latency_ms, output_text,"
-            " recalled_playbook_ids, holdout)"
-            " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-            " on conflict (project_id, id) do nothing returning id",
-            (
-                project_id,
-                run.id,
-                agent_id,
-                task_text,
-                run.model_id,
-                Jsonb(run.tool_versions),
-                run.tokens_in,
-                run.tokens_out,
-                run.cost_usd,
-                run.latency_ms,
-                output_text,
-                recalled_ids,
-                holdout,
-            ),
-        ).fetchone()
-        if inserted is None:
-            return True
+    """Store a run for a project already known to be authorised (trusted server code).
 
-        with conn.cursor() as cur:
-            cur.executemany(
-                "insert into public.steps (project_id, run_id, idx, type, tool_name, args_hash,"
-                " args_redacted, result_class, error_class, latency_ms, tokens_in, tokens_out,"
-                " input_trust, result_redacted)"
-                " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                [
-                    (
-                        project_id,
-                        run.id,
-                        step.idx,
-                        step.type,
-                        step.tool_name,
-                        args_hash(args),
-                        Jsonb(args),
-                        step.result_class,
-                        step.error_class,
-                        step.latency_ms,
-                        step.tokens_in,
-                        step.tokens_out,
-                        step.input_trust,
-                        result,
-                    )
-                    for step, args, result in zip(
-                        run.steps, redacted_args, redacted_results, strict=True
-                    )
-                ],
-            )
-        if hint:
-            add_signal(conn, project_id, run.id, hint.source, hint.outcome)
-        enqueue_run(conn, run.id)
-        increment_usage(conn, runs_captured=1, tokens_processed=run.tokens_in + run.tokens_out)
-    return False
+    Returns True if this run id was already stored.
+    """
+    with project_scope(conn, project_id):
+        result = conn.execute(
+            "select private.store_run_payload(%s, %s)",
+            (project_id, Jsonb(redacted_payload(run))),
+        ).fetchone()[0]
+    return result["status"] == "duplicate"

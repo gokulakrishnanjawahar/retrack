@@ -22,7 +22,7 @@ from retrack_server.config import Settings
 from retrack_server.db import enqueue_run, project_scope
 from retrack_server.embeddings import Embedder, embedder_from_settings
 from retrack_server.evals import list_cases, record_results
-from retrack_server.ingest import store_run
+from retrack_server.ingest import ingest
 from retrack_server.llm import LLMClient, llm_from_settings
 from retrack_server.migrations import create_migration, get_migration
 from retrack_server.recall import recall
@@ -149,8 +149,13 @@ def authenticated_project(
 async def ingest_run(
     request: Request,
     conn: Annotated[psycopg.Connection, Depends(get_conn)],
-    project_id: Annotated[UUID, Depends(authenticated_project)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> JSONResponse:
+    """Store a finished run. Key check, rate limit and storage are one database call."""
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise ApiError(401, "unauthorized", "missing, invalid or revoked API key")
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
         raise ApiError(413, "payload_too_large", f"request body exceeds {MAX_BODY_BYTES} bytes")
@@ -162,8 +167,15 @@ async def ingest_run(
     except ValidationError as exc:
         raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
 
-    duplicate = await run_in_threadpool(store_run, conn, project_id, run)
-    return JSONResponse({"id": str(run.id), "duplicate": duplicate}, status_code=202)
+    result = await run_in_threadpool(ingest, conn, token.strip(), settings.key_pepper, run)
+    status = result["status"]
+    if status == "unauthorized":
+        raise ApiError(401, "unauthorized", "missing, invalid or revoked API key")
+    if status == "rate_limited":
+        response = error_response(429, "rate_limited", "too many runs this minute; retry later")
+        response.headers["Retry-After"] = str(result["retry_after"])
+        return response
+    return JSONResponse({"id": str(run.id), "duplicate": status == "duplicate"}, status_code=202)
 
 
 @app.post("/internal/drain")

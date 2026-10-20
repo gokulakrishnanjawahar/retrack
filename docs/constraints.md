@@ -24,7 +24,12 @@
 - No heavy dependencies; keep install small.
 - Redact obvious secrets client-side before sending.
 
+## Ingest limits
+- Body at most 1 MB, at most 500 steps.
+- Rate limit per project: `projects.ingest_rate_limit` runs per minute (default 600); above it `429` with `Retry-After`. The SDK retries 429 with backoff.
+- Key check, rate limit and storage are one database call (`private.ingest_run`) sent in one batched round trip.
+
 ## Data rules
 - Tenant isolation via RLS on every customer table.
-- Per-project retention; deleting a project removes rows, vectors and archived traces (supports GDPR and India DPDP requests).
+- Per-project retention; deleting a project removes rows, vectors and archived traces (supports GDPR and India DPDP requests). *As built (2026-10-21):* `private.enforce_retention()` runs daily at 03:17 UTC (Supabase Cron) and deletes runs (with steps, signals, findings), recalls, eval results and embedding-cache rows older than `projects.retention_days` (default 90), plus ingest counters older than a day and dead-letter jobs older than 30 days. Runs that support live (non-retired) playbooks are kept until the playbook is retired, so live memory stays traceable (firewall provenance rule). Deleting a project or organization cascades to everything. Raw trace archive: not built yet (storage choice open).
 - Secrets and PII redacted before embedding.

@@ -46,20 +46,9 @@ def add_signal(
 
 
 def resolve_outcome(conn: psycopg.Connection, project_id: UUID, run_id: UUID) -> None:
-    """Store the best signal on the run: highest-ranked source, latest (by seq) within it."""
-    rows = conn.execute(
-        "select source, outcome, confidence, seq from public.outcome_signals"
-        " where project_id = %s and run_id = %s",
-        (project_id, run_id),
-    ).fetchall()
-    if not rows:
-        return
-    source, outcome, confidence, _ = max(rows, key=lambda r: (SOURCE_RANK[r[0]], r[3]))
-    conn.execute(
-        "update public.runs set outcome = %s, outcome_source = %s, confidence = %s"
-        " where project_id = %s and id = %s",
-        (outcome, source, confidence, project_id, run_id),
-    )
+    """Store the best signal on the run (private.resolve_outcome is the one definition:
+    highest-ranked source, latest within a source)."""
+    conn.execute("select private.resolve_outcome(%s, %s)", (project_id, run_id))
 
 
 def score_run(
