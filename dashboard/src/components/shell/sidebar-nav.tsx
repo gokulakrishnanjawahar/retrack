@@ -8,8 +8,7 @@ import { cn } from "@/lib/utils";
 
 type Item = { href: string; label: string; icon: LucideIcon; badge?: number };
 
-export function SidebarNav({ projectId, superAdmin, openReviews }: { projectId: string; superAdmin: boolean; openReviews: number }) {
-  const pathname = usePathname();
+function navGroups(projectId: string, superAdmin: boolean, openReviews: number) {
   const base = `/p/${projectId}`;
   const groups: { title?: string; items: Item[] }[] = [
     { items: [{ href: base, label: "Overview", icon: Gauge }] },
@@ -38,7 +37,16 @@ export function SidebarNav({ projectId, superAdmin, openReviews }: { projectId: 
     },
   ];
   if (superAdmin) groups.push({ title: "Retrack", items: [{ href: "/admin", label: "Admin", icon: ShieldCheck }] });
+  return { base, groups };
+}
 
+function isActive(pathname: string, href: string, base: string) {
+  return href === base ? pathname === base : pathname.startsWith(href);
+}
+
+export function SidebarNav({ projectId, superAdmin, openReviews }: { projectId: string; superAdmin: boolean; openReviews: number }) {
+  const pathname = usePathname();
+  const { base, groups } = navGroups(projectId, superAdmin, openReviews);
   return (
     <nav className="space-y-5">
       {groups.map((group, g) => (
@@ -47,7 +55,7 @@ export function SidebarNav({ projectId, superAdmin, openReviews }: { projectId: 
             <p className="px-2.5 pb-1.5 text-[11px] font-medium tracking-wide text-faint uppercase">{group.title}</p>
           ) : null}
           {group.items.map(({ href, label, icon: Icon, badge }) => {
-            const active = href === base ? pathname === base : pathname.startsWith(href);
+            const active = isActive(pathname, href, base);
             return (
               <Link
                 key={href}
@@ -75,6 +83,29 @@ export function SidebarNav({ projectId, superAdmin, openReviews }: { projectId: 
             );
           })}
         </div>
+      ))}
+    </nav>
+  );
+}
+
+// Phones: the same destinations as a horizontally scrolling strip.
+export function MobileNav({ projectId, superAdmin, openReviews }: { projectId: string; superAdmin: boolean; openReviews: number }) {
+  const pathname = usePathname();
+  const { base, groups } = navGroups(projectId, superAdmin, openReviews);
+  return (
+    <nav className="flex gap-1 overflow-x-auto border-b border-border px-3 py-2 md:hidden">
+      {groups.flatMap((g) => g.items).map(({ href, label, badge }) => (
+        <Link
+          key={href}
+          href={href}
+          className={cn(
+            "shrink-0 rounded-md px-2.5 py-1 text-[12.5px] whitespace-nowrap",
+            isActive(pathname, href, base) ? "bg-white/[0.07] text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {label}
+          {badge ? <span className="ml-1 text-warning">{badge}</span> : null}
+        </Link>
       ))}
     </nav>
   );

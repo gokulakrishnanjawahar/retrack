@@ -708,3 +708,35 @@ export async function getMigration(projectId: string, migrationId: string): Prom
   if (!data) notFound();
   return data;
 }
+
+// Super admin ----------------------------------------------------------------------------
+
+export type AdminOverview = {
+  organizations: number;
+  projects: number;
+  users: number;
+  users_7d: number;
+  runs_total: number;
+  runs_7d: number;
+  playbooks_active: number;
+  reviews_open: number;
+  queue_depth: number;
+  dead_letters: number;
+  usage_30d: { runs: number; recalls: number; llm_input_tokens: number; llm_output_tokens: number };
+  top_projects: { id: string; project: string; organization: string; runs_7d: number }[];
+  daily: { day: string; runs: number }[];
+  cron: { job: string; schedule: string; active: boolean; status: string | null; last_run: string | null }[];
+};
+
+// Cross-project analytics. Anyone who is not a super admin gets a 404, not a hint.
+export async function getAdminOverview(): Promise<AdminOverview> {
+  await getUser();
+  if (!(await isSuperAdmin())) notFound();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("dashboard_admin_overview");
+  if (error) {
+    if (error.code === "42501") notFound();
+    throw new Error(error.message);
+  }
+  return data as AdminOverview;
+}

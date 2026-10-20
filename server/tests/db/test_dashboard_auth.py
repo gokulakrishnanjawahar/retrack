@@ -16,8 +16,8 @@ PEPPER = "test-pepper"
 def make_user(conn, email: str | None = None) -> uuid.UUID:
     user_id = uuid.uuid4()
     conn.execute(
-        "insert into auth.users (id, email, aud, role)"
-        " values (%s, %s, 'authenticated', 'authenticated')",
+        "insert into auth.users (id, email, aud, role, created_at)"
+        " values (%s, %s, 'authenticated', 'authenticated', now())",
         (user_id, email or f"{user_id}@example.com"),
     )
     return user_id
@@ -315,6 +315,9 @@ def test_only_super_admins_get_the_cross_project_overview(conn, two_orgs):
     assert overview["projects"] >= 2
     assert overview["runs_total"] >= 2
     assert {"queue_depth", "dead_letters", "usage_30d", "top_projects"} <= overview.keys()
+    assert overview["users"] >= 3 and overview["users_7d"] >= 3  # alice, bob, gokul
+    assert len(overview["daily"]) == 30 and sum(d["runs"] for d in overview["daily"]) >= 2
+    assert {"retrack-drain-runs", "retrack-retention"} <= {job["job"] for job in overview["cron"]}
 
 
 # Admin CLI ------------------------------------------------------------------------------

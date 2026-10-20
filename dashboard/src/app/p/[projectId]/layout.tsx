@@ -1,7 +1,7 @@
 import { Logo } from "@/components/brand/logo";
 import { Backdrop } from "@/components/fx/backdrop";
 import { ProjectSwitcher } from "@/components/shell/project-switcher";
-import { SidebarNav } from "@/components/shell/sidebar-nav";
+import { MobileNav, SidebarNav } from "@/components/shell/sidebar-nav";
 import { UserMenu } from "@/components/shell/user-menu";
 import { countOpenReviews, getProject, getRole, getUser, isSuperAdmin, listProjects } from "@/lib/data";
 
@@ -38,6 +38,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
           <Logo />
           <span className="truncate text-xs text-faint">{project.name}</span>
         </div>
+        <MobileNav projectId={project.id} superAdmin={superAdmin} openReviews={openReviews} />
         {children}
       </div>
     </div>
