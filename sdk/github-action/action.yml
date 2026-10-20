@@ -1,0 +1,43 @@
+# Composite GitHub Action for customers: run Retrack's memory-derived regression tests.
+# Inputs reach the shell only through environment variables (no script injection).
+name: Retrack regression tests
+description: Run regression cases generated from Retrack's memory against your agent.
+inputs:
+  entry:
+    description: "module:function that runs one task (run_task(task, callbacks) -> str)"
+    required: true
+  agent:
+    description: Agent name used with Retrack
+    required: true
+  threshold:
+    description: Minimum pass rate (0 to 1)
+    default: "0.9"
+  model-id:
+    description: Model under test, recorded with the results
+    default: ""
+  base-url:
+    description: Retrack API base URL
+    default: "https://retrack-api.vercel.app"
+  install:
+    description: pip requirement for the Retrack SDK
+    default: "retrack"
+runs:
+  using: composite
+  steps:
+    - name: Install the Retrack SDK
+      shell: bash
+      env:
+        RETRACK_INSTALL: ${{ inputs.install }}
+      run: python -m pip install "$RETRACK_INSTALL"
+    - name: Run retrack test
+      shell: bash
+      env:
+        RETRACK_BASE_URL: ${{ inputs.base-url }}
+        RETRACK_ENTRY: ${{ inputs.entry }}
+        RETRACK_AGENT: ${{ inputs.agent }}
+        RETRACK_THRESHOLD: ${{ inputs.threshold }}
+        RETRACK_MODEL_ID: ${{ inputs.model-id }}
+      run: |
+        args=(--entry "$RETRACK_ENTRY" --agent "$RETRACK_AGENT" --threshold "$RETRACK_THRESHOLD")
+        if [ -n "$RETRACK_MODEL_ID" ]; then args+=(--model-id "$RETRACK_MODEL_ID"); fi
+        retrack test "${args[@]}"

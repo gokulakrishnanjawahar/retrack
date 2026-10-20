@@ -76,3 +76,15 @@ class RecallIn(BaseModel):
     max_playbooks: Annotated[int, Field(ge=1, le=10)] = 3
     # The id the following run will use; links this recall to that run (learning loop).
     run_id: UUID | None = None
+
+
+class EvalResultIn(BaseModel):
+    case_id: UUID
+    passed: bool
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvalResultsIn(BaseModel):
+    test_run_id: UUID
+    model_id: ShortText | None = None
+    results: list[EvalResultIn] = Field(min_length=1, max_length=1000)

@@ -55,7 +55,8 @@ At ingest a run is linked to the recalls made for its id (`runs.recalled_playboo
 ## Testing and migration
 | Table | Key fields |
 |---|---|
-| eval_cases | id, project_id, source (playbook / failure), source_id, input jsonb, expected_assertions jsonb, last_result, last_model_id, last_run_at |
+| eval_cases | id, project_id, agent_id, source (playbook / failure), source_id, source_version, input jsonb, expected_assertions jsonb, critical, status (active / retired), last_result (passed / failed), last_model_id, last_run_at, created_at. Created and retired by triggers |
+| eval_results | id, project_id, eval_case_id, test_run_id, passed, model_id, details jsonb, created_at |
 | migration_reports | id, project_id, from_model, to_model, status, summary jsonb, created_at |
 
 ## Usage metering

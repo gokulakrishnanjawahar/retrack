@@ -21,6 +21,7 @@ from retrack_server.api_keys import verify_api_key
 from retrack_server.config import Settings
 from retrack_server.db import enqueue_run, project_scope
 from retrack_server.embeddings import Embedder, embedder_from_settings
+from retrack_server.evals import list_cases, record_results
 from retrack_server.ingest import store_run
 from retrack_server.llm import LLMClient, llm_from_settings
 from retrack_server.recall import recall
@@ -28,6 +29,7 @@ from retrack_server.redaction import redact_value
 from retrack_server.schemas import (
     MAX_BODY_BYTES,
     MAX_FEEDBACK_BYTES,
+    EvalResultsIn,
     FeedbackIn,
     RecallIn,
     RunIn,
@@ -268,3 +270,34 @@ async def recall_memory(
             "mode": result.mode,
         }
     )
+
+
+@app.get("/v1/eval-cases")
+async def eval_cases(
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+    agent: str | None = None,
+) -> JSONResponse:
+    """Active regression cases generated from this project's memory."""
+    cases = await run_in_threadpool(list_cases, conn, project_id, agent)
+    return JSONResponse({"cases": cases})
+
+
+@app.post("/v1/eval-results", status_code=202)
+async def eval_results(
+    request: Request,
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+) -> JSONResponse:
+    """Record the outcome of a `retrack test` run."""
+    body = await request.body()
+    if len(body) > MAX_BODY_BYTES:
+        raise ApiError(413, "payload_too_large", f"request body exceeds {MAX_BODY_BYTES} bytes")
+    try:
+        results = EvalResultsIn.model_validate_json(body)
+    except ValidationError as exc:
+        raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
+    recorded = await run_in_threadpool(record_results, conn, project_id, results)
+    if recorded is None:
+        raise ApiError(404, "eval_case_not_found", "a case is not in this project")
+    return JSONResponse({"recorded": recorded}, status_code=202)

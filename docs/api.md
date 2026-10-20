@@ -17,6 +17,10 @@ Authentication: `Authorization: Bearer <api_key>` on every request. The key iden
 ## Internal routes
 `POST /internal/drain`: worker entry point, called every minute by Supabase Cron. Requires header `X-Retrack-Worker-Secret` (env `RETRACK_WORKER_SECRET`, also in Supabase Vault); returns 503 when not configured and never accepts API keys. Response: `{"processed": n, "retrying": n, "dead_lettered": n, "scoring_gave_up": n}`. Firewall and scoring commit separately: if only scoring (the judge) keeps failing, the job completes with the run left `unknown` instead of being dead-lettered. The time budget is checked before every job.
 
+## Regression endpoints (Phase 9)
+- `GET /v1/eval-cases?agent=NAME`: `{"cases": [{"id", "source" (playbook / failure), "input": {"task"}, "assertions": [...], "critical", "last_result"}]}`, active cases only.
+- `POST /v1/eval-results`: `{"test_run_id", "model_id"?, "results": [{"case_id", "passed", "details"?}]}` (1-1000 results) -> `202 {"recorded": n}`; `404 eval_case_not_found` if any case is not in the project.
+
 ## Run ingest request (approved 2026-10-17)
 One run = one finished agent task, sent by the SDK after the run. Fields describe the **customer's** agent (its model, its tools), not Retrack.
 ```json

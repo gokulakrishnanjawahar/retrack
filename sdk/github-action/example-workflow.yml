@@ -1,0 +1,19 @@
+# Example for a customer's repository: .github/workflows/retrack.yml
+name: Agent regression tests
+on: [pull_request]
+jobs:
+  retrack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt   # the agent's own dependencies
+      - uses: <owner>/<retrack-action-repo>@v1   # published once the SDK is public
+        env:
+          RETRACK_API_KEY: ${{ secrets.RETRACK_API_KEY }}
+        with:
+          entry: my_agent:run_task
+          agent: support-agent
+          threshold: "0.9"
