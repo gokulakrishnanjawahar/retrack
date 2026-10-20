@@ -41,7 +41,8 @@ Only role `retrack_worker` can read or remove `runs` jobs (`private.read_run_job
 | playbook_versions | project_id, playbook_id, version, snapshot jsonb, change_reason, created_at (for diff and rollback) |
 | failure_signatures | id, project_id, agent_id, tool_name, error_class, input_shape (keys and types, no values), fingerprint (sha256 of tool, error class, input shape; unique per project), occurrences, first_seen, last_seen, example_run_id, recovery_playbook_id, unrecoverable bool |
 | provenance | project_id, object_type, object_id, source_run_ids uuid[], input_sources text[] (tools used), trust_level (worst of the sources), reviewer_id, approved_at |
-| review_queue | id, project_id, object_type, object_id, reason, status (open / approved / rejected), created_at, resolved_at |
+| review_queue | id, project_id, object_type, object_id, reason, status (open / approved / rejected), reviewer, resolution_note, created_at, resolved_at |
+| firewall_findings | id, project_id, object_type (run / playbook), object_id, check_name (injection_heuristic / injection_classifier / anomaly / instruction_shaped), severity (flag / block), detail, created_at |
 | embedding_cache | project_id, model, content_hash, embedding (never embed the same text twice) |
 
 ## Recall

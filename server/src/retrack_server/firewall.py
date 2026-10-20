@@ -5,6 +5,7 @@ from what the client claims. A run is trusted only when its task is trusted and 
 step is trusted; anything else taints it. Redaction happens earlier, at ingest.
 """
 
+import json
 from typing import Any, TypedDict
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from langgraph.graph import END, START, StateGraph
 from psycopg.types.json import Jsonb
 
 from retrack_server.db import project_scope, worker_scope
+from retrack_server.injection import scan
 
 # Independent trusted successes needed before a candidate becomes active without a human.
 REQUIRED_TRUSTED_SUCCESSES = 3
@@ -25,9 +27,12 @@ class FirewallState(TypedDict, total=False):
     trusted_tools: list[str]
     task_trusted: bool
     current_taint: str
-    steps: list[tuple[int, str, str | None]]
+    task: str
+    output: str | None
+    steps: list[tuple[int, str, str | None, Any, str | None]]
     step_trust: dict[int, str]
     taint_level: str
+    findings: list[tuple[str, str]]
 
 
 def _conn(config: RunnableConfig) -> psycopg.Connection:
@@ -46,13 +51,14 @@ def _read(conn: psycopg.Connection, state: FirewallState) -> dict[str, Any]:
         (state["project_id"],),
     ).fetchone()
     run = conn.execute(
-        "select taint_level from public.runs where project_id = %s and id = %s",
+        "select taint_level, task_text, output_text from public.runs"
+        " where project_id = %s and id = %s",
         (state["project_id"], state["run_id"]),
     ).fetchone()
     if project is None or run is None:
         raise LookupError(f"run {state['run_id']} not found in project {state['project_id']}")
     steps = conn.execute(
-        "select idx, type, tool_name from public.steps"
+        "select idx, type, tool_name, args_redacted, result_redacted from public.steps"
         " where project_id = %s and run_id = %s order by idx",
         (state["project_id"], state["run_id"]),
     ).fetchall()
@@ -60,6 +66,8 @@ def _read(conn: psycopg.Connection, state: FirewallState) -> dict[str, Any]:
         "trusted_tools": project[0],
         "task_trusted": project[1],
         "current_taint": run[0],
+        "task": run[1],
+        "output": run[2],
         "steps": steps,
     }
 
@@ -68,16 +76,27 @@ def _assess(state: FirewallState) -> dict[str, Any]:
     trusted_tools = set(state["trusted_tools"])
     trusted_so_far = state["task_trusted"]
     step_trust: dict[int, str] = {}
-    for idx, step_type, tool_name in state["steps"]:
+    for idx, step_type, tool_name, _args, _result in state["steps"]:
         # A tool step is trusted only if listed; an LLM step reads the task and every earlier step.
         trusted = tool_name in trusted_tools if step_type == "tool" else trusted_so_far
         step_trust[idx] = "trusted" if trusted else "untrusted"
         trusted_so_far = trusted_so_far and trusted
+    # Scan only untrusted content: that is where injected instructions come from.
+    texts = [] if state["task_trusted"] else [("task", state["task"])]
+    for idx, _type, _tool, args, result in state["steps"]:
+        if step_trust[idx] == "untrusted":
+            texts += [(f"step {idx} args", json.dumps(args or {})), (f"step {idx} result", result)]
+    if not trusted_so_far:
+        texts.append(("final answer", state["output"]))
+    findings = [
+        (f"{where}: {check}", snippet)
+        for where, text in texts
+        for check, snippet in scan(text or "")
+    ]
     if state["current_taint"] == "quarantined":
-        taint = "quarantined"
-    else:
-        taint = "trusted" if trusted_so_far else "untrusted"
-    return {"step_trust": step_trust, "taint_level": taint}
+        return {"step_trust": step_trust, "taint_level": "quarantined", "findings": []}
+    taint = "quarantined" if findings else ("trusted" if trusted_so_far else "untrusted")
+    return {"step_trust": step_trust, "taint_level": taint, "findings": findings}
 
 
 def _save(state: FirewallState, config: RunnableConfig) -> dict[str, Any]:
@@ -93,6 +112,11 @@ def _save(state: FirewallState, config: RunnableConfig) -> dict[str, Any]:
                 Jsonb({str(idx): trust for idx, trust in state["step_trust"].items()}),
             ),
         )
+        for where, snippet in state["findings"]:
+            conn.execute(
+                "select private.record_finding(%s, 'run', %s, 'injection_heuristic', 'block', %s)",
+                (state["project_id"], state["run_id"], f"{where}: {snippet}"),
+            )
     return {}
 
 

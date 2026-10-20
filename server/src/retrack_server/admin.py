@@ -6,6 +6,9 @@ Runs with the admin database login (DATABASE_URL), never the server login.
     uv run retrack-admin create-key --project-id <uuid> --name ci
     uv run retrack-admin revoke-key --key-id <uuid>
     uv run retrack-admin set-trust --project-id <uuid> --tools orders_api,billing_api
+    uv run retrack-admin review-list --project-id <uuid>
+    uv run retrack-admin review-approve --item-id <uuid> --reviewer gokul --note "checked"
+    uv run retrack-admin review-reject --item-id <uuid> --reviewer gokul --note "poisoned"
 """
 
 import argparse
@@ -60,6 +63,53 @@ def set_trust(
     )
 
 
+def list_reviews(conn: psycopg.Connection, project_id: UUID) -> list[dict]:
+    """Open review items with what they concern and the firewall's findings."""
+    rows = conn.execute(
+        "select r.id, r.object_type, r.object_id, r.reason, r.created_at, p.title, p.status,"
+        " coalesce((select string_agg(f.check_name || ': ' || f.detail, ' | ')"
+        "   from public.firewall_findings f where f.object_id = r.object_id), '')"
+        " from public.review_queue r left join public.playbooks p on p.id = r.object_id"
+        " where r.project_id = %s and r.status = 'open' order by r.created_at",
+        (project_id,),
+    ).fetchall()
+    keys = ("id", "object_type", "object_id", "reason", "created_at", "title", "status", "findings")
+    return [dict(zip(keys, row, strict=True)) for row in rows]
+
+
+def resolve_review(
+    conn: psycopg.Connection, item_id: UUID, *, approve: bool, reviewer: str, note: str
+) -> None:
+    """Approve (playbook becomes active, reviewer recorded) or reject (playbook retired)."""
+    item = conn.execute(
+        "select project_id, object_type, object_id, status from public.review_queue where id = %s",
+        (item_id,),
+    ).fetchone()
+    if item is None or item[3] != "open":
+        raise ValueError("review item not found or already resolved")
+    project_id, object_type, object_id, _ = item
+    conn.execute(
+        "update public.review_queue set status = %s, reviewer = %s, resolution_note = %s,"
+        " resolved_at = now() where id = %s",
+        ("approved" if approve else "rejected", reviewer, note, item_id),
+    )
+    if object_type != "playbook":
+        return
+    if approve:
+        conn.execute(
+            "update public.playbooks set approved_by = %s, approved_at = now(), status = 'active'"
+            " where id = %s",
+            (reviewer, object_id),
+        )
+        conn.execute(
+            "update public.provenance set reviewer_id = %s, approved_at = now()"
+            " where project_id = %s and object_type = 'playbook' and object_id = %s",
+            (reviewer, project_id, object_id),
+        )
+    else:
+        conn.execute("update public.playbooks set status = 'retired' where id = %s", (object_id,))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="retrack-admin")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -75,6 +125,13 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--project-id", required=True, type=UUID)
     t.add_argument("--tools", default="", help="comma-separated tool names; empty trusts none")
     t.add_argument("--task-trusted", action="store_true")
+    rl = commands.add_parser("review-list", help="open review items for a project")
+    rl.add_argument("--project-id", required=True, type=UUID)
+    for name, text in (("review-approve", "approve"), ("review-reject", "reject")):
+        rv = commands.add_parser(name, help=f"{text} a review item")
+        rv.add_argument("--item-id", required=True, type=UUID)
+        rv.add_argument("--reviewer", required=True)
+        rv.add_argument("--note", default="")
     args = parser.parse_args(argv)
 
     url, pepper = os.environ.get("DATABASE_URL"), os.environ.get("RETRACK_KEY_PEPPER")
@@ -90,6 +147,21 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "create-key":
             key = create_api_key(conn, args.project_id, args.name, pepper)
             print(f"key_id:  {key.id}\napi key: {key.secret}   (shown once; store it now)")
+        elif args.command == "review-list":
+            for item in list_reviews(conn, args.project_id):
+                print(
+                    f"{item['id']}  {item['object_type']} {item['title']!r} [{item['status']}]"
+                    f"\n    reason: {item['reason']}\n    findings: {item['findings']}"
+                )
+        elif args.command in ("review-approve", "review-reject"):
+            resolve_review(
+                conn,
+                args.item_id,
+                approve=args.command == "review-approve",
+                reviewer=args.reviewer,
+                note=args.note,
+            )
+            print("resolved")
         elif args.command == "set-trust":
             set_trust(conn, args.project_id, args.tools.split(","), args.task_trusted)
             print("trust settings updated")

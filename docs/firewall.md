@@ -23,6 +23,14 @@ Persistent agent memory is an active attack surface. Research in 2026 (MemGhost,
 - **Behavioural anomaly:** if a new or updated playbook would change which tools an agent selects for a task cluster versus its baseline, quarantine and flag.
 - **Instruction-shaped memory:** playbook text must describe procedures for the task, not standing instructions about policy, permissions, recipients or URLs; flag any that do. Phase 5 uses a heuristic (URLs, override phrases, "always/never send...", credential words) that sends the playbook to review; the LLM classifier comes in Phase 8.
 
+## How the checks run (Phase 8)
+- **Every run (free):** heuristic scan (`retrack_server.injection`) of the run's *untrusted* content: untrusted task text, untrusted steps' arguments and results, and the final answer of an untrusted run. Patterns: override phrases, fake system roles and chat templates, persona switches, standing orders and "remember for the future", exfiltration links and tracking images, base64-hidden instructions, invisible Unicode (zero-width, bidirectional overrides, tag characters). A hit quarantines the run (`taint_level = quarantined`) and records a finding. Quarantined runs are never distilled.
+- **Memory write path only (Claude Haiku 5.5):** when a new playbook is created from an untrusted run, the run record and the proposed playbook go through the LLM classifier (`retrack_server.classifier`); when an untrusted run would add support to an existing playbook, the run record is classified. The playbook text is also scanned with the heuristics and the instruction-shape check.
+- **Anomaly:** a new playbook that uses a tool which similar playbooks of the agent (cosine >= 0.75) never use is quarantined.
+- **Outcomes:** any blocking finding -> playbook `quarantined` + review item; instruction-shaped text -> review item; all clean -> `passed_automatic_checks = true`, which lets trusted support promote it (rule 2). Failure-signature tool and error names must be plain identifiers (they are shown to agents in warnings).
+- **Findings** are stored in `firewall_findings` (check, severity, detail). Review with `retrack-admin review-list / review-approve / review-reject`.
+- **Poisoning suite** (`server/tests/db/test_poisoning.py`): 20 attacks x 4 placements, plus a compromised distiller, under a fooled classifier; plus benign look-alikes that must still become active memory. Trusted follow-up runs (which would promote a poisoned playbook) are added whenever the poisoned run produced a playbook. About 20 minutes from a laptop because every job crosses the network to the database.
+
 ## Quarantine and provenance
 - `status = quarantined` playbooks are never recalled.
 - Every playbook version stores `content_hash` and a `provenance` record (source run IDs, input sources, trust level, reviewer).
