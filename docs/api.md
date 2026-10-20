@@ -19,7 +19,9 @@ Authentication: `Authorization: Bearer <api_key>` on every request. The key iden
 
 ## Regression endpoints (Phase 9)
 - `GET /v1/eval-cases?agent=NAME`: `{"cases": [{"id", "source" (playbook / failure), "input": {"task"}, "assertions": [...], "critical", "last_result"}]}`, active cases only.
-- `POST /v1/eval-results`: `{"test_run_id", "model_id"?, "results": [{"case_id", "passed", "details"?}]}` (1-1000 results) -> `202 {"recorded": n}`; `404 eval_case_not_found` if any case is not in the project.
+- `POST /v1/eval-results`: `{"test_run_id", "model_id"?, "results": [{"case_id", "passed", "details"?}]}` (1-1000 results), optional `"migration_id"` -> `202 {"recorded": n}`; `404 not_found` if any case or the migration is not in the project.
+- `POST /v1/migrations`: `{"agent", "to_model", "from_model"?, "model_applied"?}` -> `201 {"id", "status": "running"}`; `404 agent_not_found`.
+- `GET /v1/migrations/{id}`: `{"id", "agent", "from_model", "to_model", "model_applied", "status", "summary": {"counts": {passes, needs_relearning, breaks, fixed, returns}, "items": [{"case_id", "source", "source_id", "title", "result", "failures"}]}, "created_at", "completed_at"}`.
 
 ## Run ingest request (approved 2026-10-17)
 One run = one finished agent task, sent by the SDK after the run. Fields describe the **customer's** agent (its model, its tools), not Retrack.

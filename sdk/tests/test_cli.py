@@ -91,7 +91,9 @@ def test_all_passing_cases_exit_zero_and_report(agent_module, capsys):
     assert run_cli(transport, "--model-id", "m2") == 0
     [report] = posted
     assert report["model_id"] == "m2"
-    assert report["results"] == [{"case_id": "c1", "passed": True, "details": {"failures": []}}]
+    assert report["results"] == [
+        {"case_id": "c1", "passed": True, "details": {"failures": [], "completed": True}}
+    ]
     assert "1/1 passed" in capsys.readouterr().out
 
 

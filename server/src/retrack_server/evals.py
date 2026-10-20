@@ -11,6 +11,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from retrack_server.db import project_scope
+from retrack_server.migrations import finalize, migration_is_open
 from retrack_server.schemas import EvalResultsIn
 
 
@@ -37,8 +38,11 @@ def list_cases(conn: psycopg.Connection, project_id: UUID, agent: str | None) ->
 
 
 def record_results(conn: psycopg.Connection, project_id: UUID, body: EvalResultsIn) -> int | None:
-    """Store results; returns how many, or None if a case is not in this project."""
+    """Store results; returns how many, or None if a case or the migration is not in this
+    project. Migration results build their report instead of updating the latest result."""
     with project_scope(conn, project_id):
+        if body.migration_id and not migration_is_open(conn, project_id, body.migration_id):
+            return None
         ids = [r.case_id for r in body.results]
         known = conn.execute(
             "select count(*) from public.eval_cases where project_id = %s and id = any(%s)",
@@ -51,8 +55,8 @@ def record_results(conn: psycopg.Connection, project_id: UUID, body: EvalResults
             details: dict[str, Any] = result.details
             conn.execute(
                 "insert into public.eval_results"
-                " (project_id, eval_case_id, test_run_id, passed, model_id, details)"
-                " values (%s, %s, %s, %s, %s, %s)",
+                " (project_id, eval_case_id, test_run_id, passed, model_id, details,"
+                " migration_id) values (%s, %s, %s, %s, %s, %s, %s)",
                 (
                     project_id,
                     result.case_id,
@@ -60,11 +64,16 @@ def record_results(conn: psycopg.Connection, project_id: UUID, body: EvalResults
                     result.passed,
                     body.model_id,
                     Jsonb(details),
+                    body.migration_id,
                 ),
             )
+            if body.migration_id:
+                continue  # the latest result tracks the current model, not the candidate
             conn.execute(
                 "update public.eval_cases set last_result = %s, last_model_id = %s,"
                 " last_run_at = now() where project_id = %s and id = %s",
                 (outcome, body.model_id, project_id, result.case_id),
             )
+        if body.migration_id:
+            finalize(conn, project_id, body.migration_id)
     return len(body.results)

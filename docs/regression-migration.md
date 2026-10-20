@@ -26,6 +26,13 @@ Triggered by `POST /v1/migrations` with a target model.
 
 Purpose: model providers deprecate models on fixed timelines, and newer models do not always behave the same on specific task types. Migration should become a checklist, not a scramble.
 
+## Model migration as built (Phase 10)
+- `retrack migrate --to NEW [--from OLD] --entry module:function --agent NAME [--sample N --seed S]` runs on the customer's side (their agent, their model keys; $0 for Retrack). It opens a report (`POST /v1/migrations`), replays the eval cases with `run_task(task, callbacks, model_id)` (a two-argument entry still runs, with a warning and `model_applied = false`), posts results with the `migration_id`, then prints the report from `GET /v1/migrations/{id}`.
+- Classification: playbook case passed -> `passes` (the model is added to the playbook's `validated_models`, so recall's version match becomes 1.0 on it); completed but an assertion failed -> `needs_relearning`; raised -> `breaks`. Failure case passed -> `fixed`, else `returns`.
+- Exit 1 when anything `breaks` or a known failure `returns`, so the command can gate a model switch in CI.
+- Migration results never change `eval_cases.last_result`, which tracks the current model.
+- `retrack test --model-id M` also passes the model to three-argument entry functions.
+
 ## Error fingerprinting and known-fix recovery
 - Fingerprint = hash of (tool_name, error_class, normalised input shape).
 - When a live failure matches a known fingerprint with a recovery playbook, the SDK can surface the recovery instead of blind retry.

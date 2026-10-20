@@ -24,6 +24,7 @@ from retrack_server.embeddings import Embedder, embedder_from_settings
 from retrack_server.evals import list_cases, record_results
 from retrack_server.ingest import store_run
 from retrack_server.llm import LLMClient, llm_from_settings
+from retrack_server.migrations import create_migration, get_migration
 from retrack_server.recall import recall
 from retrack_server.redaction import redact_value
 from retrack_server.schemas import (
@@ -31,6 +32,7 @@ from retrack_server.schemas import (
     MAX_FEEDBACK_BYTES,
     EvalResultsIn,
     FeedbackIn,
+    MigrationIn,
     RecallIn,
     RunIn,
 )
@@ -299,5 +301,35 @@ async def eval_results(
         raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
     recorded = await run_in_threadpool(record_results, conn, project_id, results)
     if recorded is None:
-        raise ApiError(404, "eval_case_not_found", "a case is not in this project")
+        raise ApiError(404, "not_found", "a case or the migration is not in this project")
     return JSONResponse({"recorded": recorded}, status_code=202)
+
+
+@app.post("/v1/migrations", status_code=201)
+async def start_migration(
+    request: Request,
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+) -> JSONResponse:
+    """Open a model-migration report; `retrack migrate` then posts results with its id."""
+    try:
+        body = MigrationIn.model_validate_json(await request.body())
+    except ValidationError as exc:
+        raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
+    migration_id = await run_in_threadpool(create_migration, conn, project_id, body)
+    if migration_id is None:
+        raise ApiError(404, "agent_not_found", "no agent with this name in this project")
+    return JSONResponse({"id": str(migration_id), "status": "running"}, status_code=201)
+
+
+@app.get("/v1/migrations/{migration_id}")
+async def read_migration(
+    migration_id: UUID,
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+) -> JSONResponse:
+    """Per-playbook and per-failure results of a model migration."""
+    report = await run_in_threadpool(get_migration, conn, project_id, migration_id)
+    if report is None:
+        raise ApiError(404, "migration_not_found", "no migration with this id in this project")
+    return JSONResponse(report)

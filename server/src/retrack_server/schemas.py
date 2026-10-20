@@ -87,4 +87,14 @@ class EvalResultIn(BaseModel):
 class EvalResultsIn(BaseModel):
     test_run_id: UUID
     model_id: ShortText | None = None
+    # Set by `retrack migrate`: results belong to that model-migration report.
+    migration_id: UUID | None = None
     results: list[EvalResultIn] = Field(min_length=1, max_length=1000)
+
+
+class MigrationIn(BaseModel):
+    agent: AgentName
+    to_model: ShortText
+    from_model: ShortText | None = None
+    # False when the entry function cannot receive the model (it may run its default).
+    model_applied: bool = True

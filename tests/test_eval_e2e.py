@@ -119,3 +119,41 @@ def test_retrack_test_runs_memory_cases_and_records_results(
             (project.project_id,),
         ).fetchone()
     assert row == ("passed", "m-e2e")
+
+
+def test_retrack_migrate_validates_passing_playbooks_for_the_new_model(
+    project, server_url, tmp_path, monkeypatch
+):
+    module = textwrap.dedent(AGENT).replace(
+        "def run_task(task, callbacks):", "def run_task(task, callbacks, model_id):"
+    )
+    (tmp_path / "e2e_migrate_agent.py").write_text(module)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    code = main(
+        [
+            "migrate",
+            "--to",
+            "next-model",
+            "--from",
+            "old-model",
+            "--entry",
+            "e2e_migrate_agent:run_task",
+            "--agent",
+            "e2e-agent",
+            "--api-key",
+            project.key.secret,
+            "--base-url",
+            server_url,
+        ]
+    )
+    assert code == 0
+    with psycopg.connect(os.environ["DATABASE_URL"]) as admin:
+        validated, status, counts = admin.execute(
+            "select p.validated_models, m.status, m.summary -> 'counts'"
+            " from public.playbooks p join public.migration_reports m"
+            " on m.project_id = p.project_id where p.project_id = %s",
+            (project.project_id,),
+        ).fetchone()
+    assert "next-model" in validated
+    assert status == "completed"
+    assert counts["passes"] == 1
