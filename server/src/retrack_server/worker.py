@@ -16,6 +16,7 @@ from retrack_server.distiller import distill_run
 from retrack_server.embeddings import Embedder
 from retrack_server.firewall import process_run
 from retrack_server.llm import LLMClient
+from retrack_server.recall import apply_learning
 from retrack_server.scoring import score_run
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,7 @@ def drain(
                     score_run(conn, job.project_id, job.run_id, llm)
                 stage = "distillation"
                 with conn.transaction():
+                    apply_learning(conn, job.project_id, job.run_id)
                     distill_run(conn, job.project_id, job.run_id, llm=llm, embedder=embedder)
                     complete_job(conn, job.msg_id)
                 result.processed += 1

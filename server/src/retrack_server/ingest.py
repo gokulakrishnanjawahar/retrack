@@ -46,10 +46,19 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
     ]
     with project_scope(conn, project_id):
         agent_id = _agent_id(conn, project_id, run.agent)
+        # Link the recalls made for this run id (learning loop and holdout metrics).
+        recalled_ids, holdout = conn.execute(
+            "select coalesce(array_agg(distinct p) filter (where p is not null), '{}'),"
+            " coalesce(bool_or(r.holdout), false)"
+            " from public.recalls r left join lateral unnest(r.playbook_ids) p on true"
+            " where r.project_id = %s and r.run_id = %s",
+            (project_id, run.id),
+        ).fetchone()
         inserted = conn.execute(
             "insert into public.runs (project_id, id, agent_id, task_text, model_id,"
-            " tool_versions, tokens_in, tokens_out, cost_usd, latency_ms, output_text)"
-            " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            " tool_versions, tokens_in, tokens_out, cost_usd, latency_ms, output_text,"
+            " recalled_playbook_ids, holdout)"
+            " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             " on conflict (project_id, id) do nothing returning id",
             (
                 project_id,
@@ -63,6 +72,8 @@ def store_run(conn: psycopg.Connection, project_id: UUID, run: RunIn) -> bool:
                 run.cost_usd,
                 run.latency_ms,
                 output_text,
+                recalled_ids,
+                holdout,
             ),
         ).fetchone()
         if inserted is None:

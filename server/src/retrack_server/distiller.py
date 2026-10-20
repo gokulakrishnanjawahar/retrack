@@ -263,11 +263,14 @@ def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
     taint = run["taint"]
     if match and match[1] >= MERGE_SIMILARITY:
         conn.execute(
-            "update public.playbooks set support_count = support_count + 1,"
+            "update public.playbooks set"
+            " confidence = (confidence * support_count + %s) / (support_count + 1),"
+            " support_count = support_count + 1,"
             " trusted_support = trusted_support + %s, untrusted_sources = untrusted_sources + %s,"
             " quarantined_sources = quarantined_sources + %s, last_success_at = now()"
             " where project_id = %s and id = %s",
             (
+                run["confidence"],
                 int(taint == "trusted"),
                 int(taint == "untrusted"),
                 int(taint == "quarantined"),
@@ -309,9 +312,9 @@ def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
         "insert into public.playbooks (project_id, agent_id, status, title, task_pattern,"
         " preconditions, steps, pitfalls, embedding, embedding_model, support_count,"
         " trusted_support, untrusted_sources, quarantined_sources, last_success_at,"
-        " validated_models, tool_versions, content_hash)"
+        " validated_models, tool_versions, content_hash, confidence)"
         " values (%s, %s, %s, %s, %s, %s, %s, %s, %s::extensions.halfvec, %s, 1, %s, %s, %s,"
-        " now(), %s, %s, %s) returning id",
+        " now(), %s, %s, %s, %s) returning id",
         (
             state["project_id"],
             run["agent_id"],
@@ -329,6 +332,7 @@ def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
             [run["model_id"]],
             Jsonb(run["tool_versions"] or {}),
             digest,
+            run["confidence"],
         ),
     ).fetchone()[0]
     conn.execute(

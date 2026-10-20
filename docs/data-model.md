@@ -6,8 +6,8 @@ All tables carrying customer data have `project_id` and row-level security (RLS)
 | Table | Key fields |
 |---|---|
 | organizations | id, name, created_at |
-| projects | id, org_id, name, region, retention_days, trusted_tools text[], task_trusted bool, created_at |
-| agents | id, project_id, name, framework (e.g. langgraph), created_at |
+| projects | id, org_id, name, region, retention_days, trusted_tools text[], task_trusted bool, holdout_rate (default 0.10), created_at |
+| agents | id, project_id, name, framework (e.g. langgraph), recall_threshold (default 0.72), created_at |
 | api_keys | id, project_id, prefix (shown to user, e.g. `rtk_live_ab12`), key_hash, name, created_at, last_used_at, revoked_at |
 | members | org_id, user_id, role |
 
@@ -43,6 +43,13 @@ Only role `retrack_worker` can read or remove `runs` jobs (`private.read_run_job
 | provenance | project_id, object_type, object_id, source_run_ids uuid[], input_sources text[] (tools used), trust_level (worst of the sources), reviewer_id, approved_at |
 | review_queue | id, project_id, object_type, object_id, reason, status (open / approved / rejected), created_at, resolved_at |
 | embedding_cache | project_id, model, content_hash, embedding (never embed the same text twice) |
+
+## Recall
+| Table | Key fields |
+|---|---|
+| recalls | id, project_id, agent_id, run_id, playbook_ids uuid[], warning_ids uuid[], holdout, mode (hybrid / keyword / holdout / no_agent), latency_ms, created_at |
+
+At ingest a run is linked to the recalls made for its id (`runs.recalled_playbook_ids`, `runs.holdout`). After scoring, the learning loop updates the recalled playbooks' `uses`, `successes`, `success_rate` once per outcome (`runs.recall_counted_as`). `retrack_api` can read only `active` playbooks.
 
 ## Testing and migration
 | Table | Key fields |

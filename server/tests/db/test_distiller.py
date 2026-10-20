@@ -255,7 +255,10 @@ def test_pipeline_role_is_limited_to_one_project(conn, tenants):
     assert visible == [(a.run_id,)]
 
 
-def test_api_role_cannot_touch_memory(conn, tenants):
+def test_api_role_sees_only_active_playbooks_and_cannot_write_memory(conn, tenants):
     a, _ = tenants
+    distill(conn, a, make_run(conn, a, "Refund order 42", "success"))
+    with project_scope(conn, a.project_id):
+        assert conn.execute("select count(*) from public.playbooks").fetchone()[0] == 0
     with pytest.raises(psycopg.errors.InsufficientPrivilege), project_scope(conn, a.project_id):
-        conn.execute("select * from public.playbooks")
+        conn.execute("update public.playbooks set title = 'x'")

@@ -23,8 +23,15 @@ from retrack_server.db import enqueue_run, project_scope
 from retrack_server.embeddings import Embedder, embedder_from_settings
 from retrack_server.ingest import store_run
 from retrack_server.llm import LLMClient, llm_from_settings
+from retrack_server.recall import recall
 from retrack_server.redaction import redact_value
-from retrack_server.schemas import MAX_BODY_BYTES, MAX_FEEDBACK_BYTES, FeedbackIn, RunIn
+from retrack_server.schemas import (
+    MAX_BODY_BYTES,
+    MAX_FEEDBACK_BYTES,
+    FeedbackIn,
+    RecallIn,
+    RunIn,
+)
 from retrack_server.scoring import add_signal
 from retrack_server.worker import drain
 
@@ -222,4 +229,34 @@ async def record_feedback(
             "confidence": row[2],
         },
         status_code=202,
+    )
+
+
+@app.post("/v1/recall")
+async def recall_memory(
+    request: Request,
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> JSONResponse:
+    """Gated playbooks and failure warnings for the task an agent is about to do."""
+    body = await request.body()
+    if len(body) > MAX_BODY_BYTES:
+        raise ApiError(413, "payload_too_large", f"request body exceeds {MAX_BODY_BYTES} bytes")
+    try:
+        recall_request = RecallIn.model_validate_json(body)
+    except ValidationError as exc:
+        raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
+    result = await run_in_threadpool(
+        recall, conn, project_id, recall_request, get_embedder(settings)
+    )
+    return JSONResponse(
+        {
+            "recall_id": result.recall_id,
+            "playbooks": result.playbooks,
+            "warnings": result.warnings,
+            "holdout": result.holdout,
+            "replay_eligible": False,
+            "mode": result.mode,
+        }
     )

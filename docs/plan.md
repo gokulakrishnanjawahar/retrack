@@ -28,6 +28,7 @@ Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit lo
 - Phase 3: done (redaction at ingest, taint tracking, promotion rule, workers via Supabase Cron → `/internal/drain`, verified live).
 - Phase 4: done (outcome signals, AI judge on Claude Haiku 5.5, `POST /v1/feedback`, SDK `rt.feedback`, final answers and tool results captured). Deployed with the LLM **off**; judge quality check 17/23 with no false successes ($0.0025 spent). Turning the live judge on needs Gokul's approval.
 - Phase 5: built and tested with fake LLM and embedder (playbooks, failure signatures, provenance, review queue, promotion guard, embedding cache, `retrack_pipeline` role). Live Vertex AI setup pending Gokul's Google Cloud billing.
+- Phase 6: built (`POST /v1/recall`, gate score, holdout, warnings, learning loop, SDK `rt.recall` / `recall_node`). Recall runs keyword-only until embeddings are enabled. Full database test run and deploy pending.
 
 ## Why this order
 - **Firewall is split.** Redaction and the taint gate (Phase 3) come before anything is embedded or distilled, so secrets never reach vectors and rule 8 in `CLAUDE.md` holds from the first playbook. The LLM-heavy checks (Phase 8) land before any external user relies on recall.

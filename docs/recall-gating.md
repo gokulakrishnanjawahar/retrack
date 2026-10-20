@@ -38,3 +38,13 @@ A configurable slice of runs (default 10%) gets no memory. Metrics compare holdo
 
 ## Failure behaviour
 Recall has a strict timeout (see `constraints.md`). On timeout or error, the SDK returns empty memory and the agent proceeds. Never block the agent.
+
+## Defaults decided 2026-10-20
+- **New playbooks:** success rate counts the supporting source runs as prior successes: `(successes + support) / (uses + support)`, so a new playbook starts at 1.0 and adjusts with use.
+- **Breaking tool change:** a different major version (leading number: `v3` vs `v4`, `2026-…` vs `2027-…`). Requests that omit `model_id` or `tool_versions` are not penalised for them.
+- **Freshness:** half-life 30 days from the last success.
+- **Auto-retire:** success below 50% after 10 or more uses.
+- **Holdout:** 10% per project (`projects.holdout_rate`), decided deterministically from project and run id.
+- **Threshold:** `agents.recall_threshold`, default 0.72.
+- **Embedding at recall:** 150 ms budget; slower or disabled embeddings fall back to keyword-only search.
+- **Latency check:** candidate search over 10,000 active playbooks measured at about 52 ms server execution after fixing the query plan (target p50 under 120 ms).

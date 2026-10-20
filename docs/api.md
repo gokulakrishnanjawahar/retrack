@@ -48,30 +48,35 @@ Response `202`: `{"id": "...", "duplicate": false}`; `duplicate` is true when th
 
 Resolution: the highest-ranked source wins (test > event > feedback > judge); within a source, the latest signal wins. The AI judge runs only when a run has no signal, at most once, with confidence capped at 0.7 (0.5 for untrusted runs).
 
-## Recall request (sketch)
+## Recall request (Phase 6)
 ```json
 {
   "agent": "support-agent",
   "task": "Refund order #123 that arrived damaged",
   "model_id": "claude-haiku-5-5",
   "tool_versions": {"stripe": "2026-09", "orders_api": "v3"},
-  "max_playbooks": 3
+  "max_playbooks": 3,
+  "run_id": "uuid of the run that follows (optional; links recall to run)"
 }
 ```
+`max_playbooks` 1-10 (default 3). The task is redacted before use. Unknown agents get empty memory.
 
-## Recall response (sketch)
+## Recall response
 ```json
 {
+  "recall_id": "uuid",
   "playbooks": [
-    {"id": "...", "version": 4, "score": 0.83, "preconditions": "...", "steps": [...], "pitfalls": "..."}
+    {"id": "...", "version": 4, "score": 0.83, "title": "...", "preconditions": "...", "steps": [{"action": "...", "tool": "..."}], "pitfalls": "..."}
   ],
   "warnings": [
-    {"fingerprint": "...", "message": "orders_api returns 429 above 5 req/s; back off", "recovery": "..."}
+    {"id": "...", "fingerprint": "...", "tool": "orders_api", "error_class": "TimeoutError", "occurrences": 7, "last_seen": "...", "message": "...", "recovery": null}
   ],
   "replay_eligible": false,
-  "holdout": false
+  "holdout": false,
+  "mode": "hybrid"
 }
 ```
+`mode` is `hybrid` (vectors + keywords), `keyword` (embeddings off or slower than 150 ms), `holdout` or `no_agent`. Only `active` playbooks are ever returned. Warnings are failure signatures seen at least twice for the agent's tools.
 When `holdout` is true, return no memory and mark the run so metrics can compare.
 
 ## SDK surface (Python, sketch)
@@ -81,7 +86,8 @@ from retrack import Retrack
 rt = Retrack(api_key=os.environ["RETRACK_API_KEY"], agent="support-agent")
 graph = builder.compile()
 result = graph.invoke(inputs, config={"callbacks": [rt.callback()]})  # capture
-memory = rt.recall(task=..., model_id=..., tool_versions=...)  # before task
+memory = rt.recall(task, run_id=run_id)                              # before task; 400 ms, fails open
+prompt_text = memory.as_prompt()                                     # or builder.add_node(rt.recall_node())
 handler = rt.callback()  # handler.last_run_id after a run
 rt.feedback(handler.last_run_id, outcome="success", source="test")
 ```

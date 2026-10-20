@@ -66,3 +66,13 @@ class FeedbackIn(BaseModel):
     outcome: Literal["success", "failure"]
     source: Literal["test", "feedback", "event"]
     detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class RecallIn(BaseModel):
+    agent: AgentName
+    task: Annotated[str, StringConstraints(min_length=1, max_length=50_000)]
+    model_id: ShortText | None = None
+    tool_versions: dict[ShortText, ShortText] = Field(default_factory=dict, max_length=100)
+    max_playbooks: Annotated[int, Field(ge=1, le=10)] = 3
+    # The id the following run will use; links this recall to that run (learning loop).
+    run_id: UUID | None = None

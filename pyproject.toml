@@ -29,6 +29,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests", "sdk/tests", "server/tests"]
 addopts = ["--import-mode=importlib"]
+markers = ["slow: seeds large data sets (run with -m slow, or everything by default)"]
 
 [tool.ruff]
 target-version = "py312"
