@@ -104,3 +104,39 @@ export async function updateProjectSettings(
   revalidatePath(`/p/${projectId}`, "layout");
   return { ok: true };
 }
+
+export async function resolveReview(
+  projectId: string,
+  itemId: string,
+  approve: boolean,
+  note: string,
+): Promise<ActionResult> {
+  await getUser();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("dashboard_resolve_review", {
+    p_item_id: itemId,
+    p_approve: approve,
+    p_note: note.slice(0, 1000),
+  });
+  if (error) return { ok: false, error: message(error) };
+  revalidatePath(`/p/${projectId}`, "layout");
+  return { ok: true };
+}
+
+export async function setPlaybookStatus(
+  projectId: string,
+  playbookId: string,
+  status: "quarantined" | "retired",
+  note: string,
+): Promise<ActionResult> {
+  await getUser();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("dashboard_set_playbook_status", {
+    p_playbook_id: playbookId,
+    p_status: status,
+    p_note: note.slice(0, 500),
+  });
+  if (error) return { ok: false, error: message(error) };
+  revalidatePath(`/p/${projectId}`, "layout");
+  return { ok: true };
+}

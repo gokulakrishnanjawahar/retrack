@@ -1,18 +1,27 @@
 "use client";
 
-import { Gauge, KeyRound, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
+import { BrainCircuit, Gauge, History, KeyRound, ListChecks, Radar, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-type Item = { href: string; label: string; icon: LucideIcon };
+type Item = { href: string; label: string; icon: LucideIcon; badge?: number };
 
-export function SidebarNav({ projectId, superAdmin }: { projectId: string; superAdmin: boolean }) {
+export function SidebarNav({ projectId, superAdmin, openReviews }: { projectId: string; superAdmin: boolean; openReviews: number }) {
   const pathname = usePathname();
   const base = `/p/${projectId}`;
   const groups: { title?: string; items: Item[] }[] = [
     { items: [{ href: base, label: "Overview", icon: Gauge }] },
+    {
+      title: "Agents",
+      items: [
+        { href: `${base}/runs`, label: "Runs", icon: History },
+        { href: `${base}/memory`, label: "Memory", icon: BrainCircuit },
+        { href: `${base}/review`, label: "Review", icon: ListChecks, badge: openReviews },
+        { href: `${base}/recalls`, label: "Recalls", icon: Radar },
+      ],
+    },
     {
       title: "Project",
       items: [
@@ -30,7 +39,7 @@ export function SidebarNav({ projectId, superAdmin }: { projectId: string; super
           {group.title ? (
             <p className="px-2.5 pb-1.5 text-[11px] font-medium tracking-wide text-faint uppercase">{group.title}</p>
           ) : null}
-          {group.items.map(({ href, label, icon: Icon }) => {
+          {group.items.map(({ href, label, icon: Icon, badge }) => {
             const active = href === base ? pathname === base : pathname.startsWith(href);
             return (
               <Link
@@ -50,6 +59,11 @@ export function SidebarNav({ projectId, superAdmin }: { projectId: string; super
                 ) : null}
                 <Icon className={cn("relative size-4", active ? "text-brand" : "text-faint")} />
                 <span className="relative">{label}</span>
+                {badge ? (
+                  <span className="relative ml-auto rounded-full bg-warning/15 px-1.5 font-mono text-[10.5px] text-warning ring-1 ring-warning/25">
+                    {badge}
+                  </span>
+                ) : null}
               </Link>
             );
           })}

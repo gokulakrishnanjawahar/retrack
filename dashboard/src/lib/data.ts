@@ -246,3 +246,363 @@ export async function listTopPlaybooks(projectId: string, limit = 5): Promise<To
   if (error) throw new Error(error.message);
   return data;
 }
+
+// Memory ---------------------------------------------------------------------------------
+
+export type PlaybookStatus = "candidate" | "active" | "quarantined" | "retired";
+
+export type PlaybookSummary = {
+  id: string;
+  agent_id: string;
+  title: string;
+  status: PlaybookStatus;
+  uses: number;
+  successes: number;
+  success_rate: number;
+  confidence: number;
+  trusted_support: number;
+  untrusted_sources: number;
+  quarantined_sources: number;
+  support_count: number;
+  validated_models: string[];
+  last_success_at: string | null;
+  version: number;
+  updated_at: string;
+};
+
+export async function listPlaybooks(projectId: string): Promise<PlaybookSummary[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("playbooks")
+    .select(
+      "id, agent_id, title, status, uses, successes, success_rate, confidence, trusted_support," +
+        " untrusted_sources, quarantined_sources, support_count, validated_models," +
+        " last_success_at, version, updated_at",
+    )
+    .eq("project_id", projectId)
+    .order("updated_at", { ascending: false })
+    .limit(500)
+    .returns<PlaybookSummary[]>();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export type Step = { action?: string; tool?: string; detail?: string; [key: string]: unknown };
+
+export type PlaybookDetail = PlaybookSummary & {
+  task_pattern: string;
+  preconditions: string;
+  steps: Step[] | string[];
+  pitfalls: string;
+  tool_versions: Record<string, string>;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  versions: { version: number; snapshot: Record<string, unknown>; change_reason: string; created_at: string }[];
+  provenance: { source_run_ids: string[]; input_sources: string[]; trust_level: string; reviewer_id: string | null } | null;
+  findings: Finding[];
+  evalCase: { status: string; last_result: string | null; last_model_id: string | null; last_run_at: string | null } | null;
+};
+
+export type Finding = { id: string; object_id: string; check_name: string; severity: "flag" | "block"; detail: string; created_at: string };
+
+export async function getPlaybook(projectId: string, playbookId: string): Promise<PlaybookDetail> {
+  if (!UUID_RE.test(playbookId)) notFound();
+  const supabase = await createClient();
+  const [playbook, versions, provenance, findings, evalCase] = await Promise.all([
+    supabase
+      .from("playbooks")
+      .select(
+        "id, agent_id, title, status, uses, successes, success_rate, confidence, trusted_support," +
+          " untrusted_sources, quarantined_sources, support_count, validated_models, last_success_at," +
+          " version, updated_at, task_pattern, preconditions, steps, pitfalls, tool_versions," +
+          " approved_by, approved_at, created_at",
+      )
+      .eq("project_id", projectId)
+      .eq("id", playbookId)
+      .maybeSingle(),
+    supabase
+      .from("playbook_versions")
+      .select("version, snapshot, change_reason, created_at")
+      .eq("playbook_id", playbookId)
+      .order("version", { ascending: false }),
+    supabase
+      .from("provenance")
+      .select("source_run_ids, input_sources, trust_level, reviewer_id")
+      .eq("object_type", "playbook")
+      .eq("object_id", playbookId)
+      .maybeSingle(),
+    supabase
+      .from("firewall_findings")
+      .select("id, object_id, check_name, severity, detail, created_at")
+      .eq("object_type", "playbook")
+      .eq("object_id", playbookId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("eval_cases")
+      .select("status, last_result, last_model_id, last_run_at")
+      .eq("source", "playbook")
+      .eq("source_id", playbookId)
+      .maybeSingle(),
+  ]);
+  if (playbook.error) throw new Error(playbook.error.message);
+  if (!playbook.data) notFound();
+  return {
+    ...(playbook.data as unknown as PlaybookSummary & Omit<PlaybookDetail, "versions" | "provenance" | "findings" | "evalCase">),
+    versions: (versions.data ?? []) as PlaybookDetail["versions"],
+    provenance: (provenance.data ?? null) as PlaybookDetail["provenance"],
+    findings: (findings.data ?? []) as Finding[],
+    evalCase: (evalCase.data ?? null) as PlaybookDetail["evalCase"],
+  };
+}
+
+export type FailureSignature = {
+  id: string;
+  agent_id: string;
+  tool_name: string;
+  error_class: string;
+  input_shape: string;
+  occurrences: number;
+  recoveries: number;
+  unrecoverable: boolean;
+  unrecoverable_override: boolean | null;
+  recovery_steps: unknown[];
+  first_seen: string;
+  last_seen: string;
+};
+
+export async function listFailureSignatures(projectId: string): Promise<FailureSignature[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("failure_signatures")
+    .select(
+      "id, agent_id, tool_name, error_class, input_shape, occurrences, recoveries, unrecoverable," +
+        " unrecoverable_override, recovery_steps, first_seen, last_seen",
+    )
+    .eq("project_id", projectId)
+    .order("occurrences", { ascending: false })
+    .limit(300)
+    .returns<FailureSignature[]>();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Review ---------------------------------------------------------------------------------
+
+export type ReviewItem = {
+  id: string;
+  object_type: "playbook" | "failure_signature";
+  object_id: string;
+  reason: string;
+  created_at: string;
+  playbook: Pick<PlaybookDetail, "id" | "title" | "status" | "task_pattern" | "steps" | "pitfalls" | "trusted_support" | "untrusted_sources" | "quarantined_sources"> | null;
+  findings: Finding[];
+};
+
+export async function listOpenReviews(projectId: string): Promise<ReviewItem[]> {
+  const supabase = await createClient();
+  const { data: items, error } = await supabase
+    .from("review_queue")
+    .select("id, object_type, object_id, reason, created_at")
+    .eq("project_id", projectId)
+    .eq("status", "open")
+    .order("created_at")
+    .returns<Omit<ReviewItem, "playbook" | "findings">[]>();
+  if (error) throw new Error(error.message);
+  const ids = items.map((i) => i.object_id);
+  if (ids.length === 0) return [];
+  const [playbooks, findings] = await Promise.all([
+    supabase
+      .from("playbooks")
+      .select("id, title, status, task_pattern, steps, pitfalls, trusted_support, untrusted_sources, quarantined_sources")
+      .in("id", ids),
+    supabase
+      .from("firewall_findings")
+      .select("id, object_id, check_name, severity, detail, created_at")
+      .in("object_id", ids),
+  ]);
+  const byId = new Map((playbooks.data ?? []).map((p) => [p.id as string, p]));
+  return items.map((item) => ({
+    ...item,
+    playbook: (byId.get(item.object_id) ?? null) as ReviewItem["playbook"],
+    findings: ((findings.data ?? []) as Finding[]).filter((f) => f.object_id === item.object_id),
+  }));
+}
+
+export async function countOpenReviews(projectId: string): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("review_queue")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("status", "open");
+  return count ?? 0;
+}
+
+export async function listQuarantinedRuns(projectId: string): Promise<(RunRow & { findings: Finding[] })[]> {
+  const supabase = await createClient();
+  const { data: runs, error } = await supabase
+    .from("runs")
+    .select(RUN_COLUMNS)
+    .eq("project_id", projectId)
+    .eq("taint_level", "quarantined")
+    .order("created_at", { ascending: false })
+    .limit(50)
+    .returns<RunRow[]>();
+  if (error) throw new Error(error.message);
+  if (runs.length === 0) return [];
+  const { data: findings } = await supabase
+    .from("firewall_findings")
+    .select("id, object_id, check_name, severity, detail, created_at")
+    .eq("object_type", "run")
+    .in("object_id", runs.map((r) => r.id));
+  return runs.map((run) => ({ ...run, findings: ((findings ?? []) as Finding[]).filter((f) => f.object_id === run.id) }));
+}
+
+// Runs -----------------------------------------------------------------------------------
+
+export type RunFilters = { outcome?: string; q?: string; agent?: string; before?: string };
+
+export const RUNS_PAGE = 40;
+
+export async function listRuns(projectId: string, filters: RunFilters): Promise<RunRow[]> {
+  const supabase = await createClient();
+  let query = supabase.from("runs").select(RUN_COLUMNS).eq("project_id", projectId);
+  if (filters.outcome === "quarantined") query = query.eq("taint_level", "quarantined");
+  else if (filters.outcome && ["success", "failure", "unknown"].includes(filters.outcome)) {
+    query = query.eq("outcome", filters.outcome);
+  }
+  if (filters.agent && UUID_RE.test(filters.agent)) query = query.eq("agent_id", filters.agent);
+  if (filters.q) query = query.ilike("task_text", `%${filters.q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
+  if (filters.before && !Number.isNaN(Date.parse(filters.before))) query = query.lt("created_at", filters.before);
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(RUNS_PAGE)
+    .returns<RunRow[]>();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export type StepRow = {
+  idx: number;
+  type: "llm" | "tool";
+  tool_name: string | null;
+  args_redacted: Record<string, unknown> | null;
+  result_class: string | null;
+  error_class: string | null;
+  result_redacted: string | null;
+  latency_ms: number | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  input_trust: "trusted" | "untrusted";
+};
+
+export type RunDetail = RunRow & {
+  output_text: string | null;
+  cost_usd: number | null;
+  confidence: number | null;
+  replay_of: string | null;
+  steps: StepRow[];
+  signals: { source: string; outcome: string; confidence: number; created_at: string }[];
+  findings: Finding[];
+  recall: { mode: string; latency_ms: number | null; playbook_ids: string[]; warning_ids: string[] } | null;
+  playbookTitles: Record<string, string>;
+};
+
+export async function getRun(projectId: string, runId: string): Promise<RunDetail> {
+  if (!UUID_RE.test(runId)) notFound();
+  const supabase = await createClient();
+  const [run, steps, signals, findings, recall] = await Promise.all([
+    supabase
+      .from("runs")
+      .select(`${RUN_COLUMNS}, output_text, cost_usd, confidence, replay_of`)
+      .eq("project_id", projectId)
+      .eq("id", runId)
+      .maybeSingle(),
+    supabase
+      .from("steps")
+      .select("idx, type, tool_name, args_redacted, result_class, error_class, result_redacted, latency_ms, tokens_in, tokens_out, input_trust")
+      .eq("project_id", projectId)
+      .eq("run_id", runId)
+      .order("idx"),
+    supabase
+      .from("outcome_signals")
+      .select("source, outcome, confidence, created_at")
+      .eq("project_id", projectId)
+      .eq("run_id", runId)
+      .order("created_at"),
+    supabase
+      .from("firewall_findings")
+      .select("id, object_id, check_name, severity, detail, created_at")
+      .eq("object_type", "run")
+      .eq("object_id", runId),
+    supabase
+      .from("recalls")
+      .select("mode, latency_ms, playbook_ids, warning_ids")
+      .eq("project_id", projectId)
+      .eq("run_id", runId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (run.error) throw new Error(run.error.message);
+  if (!run.data) notFound();
+  const ids = [...new Set([...((run.data as unknown as RunRow).recalled_playbook_ids ?? []), ...((recall.data?.playbook_ids as string[]) ?? [])])];
+  const titles = ids.length
+    ? ((await supabase.from("playbooks").select("id, title").in("id", ids)).data ?? [])
+    : [];
+  return {
+    ...(run.data as unknown as RunDetail),
+    steps: (steps.data ?? []) as StepRow[],
+    signals: (signals.data ?? []) as RunDetail["signals"],
+    findings: (findings.data ?? []) as Finding[],
+    recall: (recall.data ?? null) as RunDetail["recall"],
+    playbookTitles: Object.fromEntries(titles.map((t) => [t.id as string, t.title as string])),
+  };
+}
+
+// Recalls --------------------------------------------------------------------------------
+
+export type RecallRow = {
+  id: string;
+  agent_id: string;
+  run_id: string | null;
+  playbook_ids: string[];
+  warning_ids: string[];
+  holdout: boolean;
+  mode: "hybrid" | "keyword" | "holdout" | "no_agent";
+  latency_ms: number | null;
+  created_at: string;
+};
+
+export async function listRecalls(projectId: string): Promise<{
+  recalls: RecallRow[];
+  titles: Record<string, string>;
+  outcomes: Record<string, RunRow["outcome"]>;
+  tasks: Record<string, string>;
+}> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("recalls")
+    .select("id, agent_id, run_id, playbook_ids, warning_ids, holdout, mode, latency_ms, created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(100)
+    .returns<RecallRow[]>();
+  if (error) throw new Error(error.message);
+  const playbookIds = [...new Set(data.flatMap((r) => r.playbook_ids))];
+  const runIds = data.map((r) => r.run_id).filter((id): id is string => Boolean(id));
+  const [titles, runs] = await Promise.all([
+    playbookIds.length ? supabase.from("playbooks").select("id, title").in("id", playbookIds) : Promise.resolve({ data: [] }),
+    runIds.length
+      ? supabase.from("runs").select("id, outcome, task_text").eq("project_id", projectId).in("id", runIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const runRows = (runs.data ?? []) as { id: string; outcome: RunRow["outcome"]; task_text: string }[];
+  return {
+    recalls: data,
+    titles: Object.fromEntries(((titles.data ?? []) as { id: string; title: string }[]).map((t) => [t.id, t.title])),
+    outcomes: Object.fromEntries(runRows.map((r) => [r.id, r.outcome])),
+    tasks: Object.fromEntries(runRows.map((r) => [r.id, r.task_text])),
+  };
+}

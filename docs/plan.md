@@ -36,7 +36,7 @@ Later (block M): TypeScript SDK, OpenTelemetry ingestion, self-hosting, audit lo
 - Hardening (between Phases 10 and 11): one-round-trip ingest (`private.ingest_run`), per-project ingest rate limit, daily retention job. Full suite: 538 passed.
 - Deployed 2026-10-21: Phases 0-10 + hardening live at `https://retrack-api.vercel.app` (LLM and embeddings off). Measured live: ingest about 22 ms server median (was about 60 ms); recall 15 ms median / 26 ms p95 server-side in keyword mode; Cron processed 25/25 runs in 43 s.
 - Phase 11: built (known-fix learning, automatic unrecoverable flag, recall warnings with fixes, plan replay eligibility and demotion, SDK `memory.protect` circuit breaker and `replay_of`).
-- Phase 12: in progress. Done: Supabase Auth login, onboarding with live first-run wait, API keys, project settings, overview (KPIs, memory lift vs holdout, runs chart, live run feed over Realtime). Migrations applied to dev. Next: memory and review pages, regression and migration pages, super-admin analytics.
+- Phase 12: in progress. Done: Supabase Auth login, onboarding with live first-run wait, API keys, project settings, overview (KPIs, memory lift vs holdout, runs chart, live run feed over Realtime), runs explorer with step timeline, memory board, playbook detail with version diff, quarantine and retire, review queue, recall inspector. Migrations applied to dev. Next: regression and migration pages, super-admin analytics.
 
 ## Why this order
 - **Firewall is split.** Redaction and the taint gate (Phase 3) come before anything is embedded or distilled, so secrets never reach vectors and rule 8 in `CLAUDE.md` holds from the first playbook. The LLM-heavy checks (Phase 8) land before any external user relies on recall.

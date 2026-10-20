@@ -3,16 +3,17 @@ import { Backdrop } from "@/components/fx/backdrop";
 import { ProjectSwitcher } from "@/components/shell/project-switcher";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { UserMenu } from "@/components/shell/user-menu";
-import { getProject, getRole, getUser, isSuperAdmin, listProjects } from "@/lib/data";
+import { countOpenReviews, getProject, getRole, getUser, isSuperAdmin, listProjects } from "@/lib/data";
 
 export default async function ProjectLayout({ children, params }: LayoutProps<"/p/[projectId]">) {
   const { projectId } = await params;
-  const [user, project, projects, role, superAdmin] = await Promise.all([
+  const [user, project, projects, role, superAdmin, openReviews] = await Promise.all([
     getUser(),
     getProject(projectId),
     listProjects(),
     getRole(projectId),
     isSuperAdmin(),
+    countOpenReviews(projectId),
   ]);
 
   return (
@@ -26,7 +27,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
           <ProjectSwitcher current={project} projects={projects} />
         </div>
         <div className="flex-1 overflow-y-auto px-3">
-          <SidebarNav projectId={project.id} superAdmin={superAdmin} />
+          <SidebarNav projectId={project.id} superAdmin={superAdmin} openReviews={openReviews} />
         </div>
         <div className="border-t border-sidebar-border p-3">
           <UserMenu email={user.email} role={role} />

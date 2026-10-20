@@ -398,3 +398,64 @@ def test_overview_of_another_orgs_project_is_empty(conn, two_orgs):
         assert conn.execute(
             "select public.dashboard_project_overview(%s, 30)", (b.project_id,)
         ).fetchone() == (None,)
+
+
+# Memory actions (Phase 12c) -------------------------------------------------------------
+
+
+def active_playbook(conn, tenant):
+    return conn.execute(
+        "insert into public.playbooks (project_id, agent_id, status, title, content_hash,"
+        " trusted_support) values (%s, %s, 'active', 'Refund damaged items', 'h', 3) returning id",
+        (tenant.project_id, tenant.agent_id),
+    ).fetchone()[0]
+
+
+def test_owner_quarantines_a_playbook_and_it_goes_to_review(conn, two_orgs):
+    a, _, alice, _ = two_orgs
+    playbook_id = active_playbook(conn, a)
+    with as_user(conn, alice, email="alice@example.com"):
+        conn.execute(
+            "select public.dashboard_set_playbook_status(%s, 'quarantined', 'looks wrong')",
+            (playbook_id,),
+        )
+    assert conn.execute(
+        "select status from public.playbooks where id = %s", (playbook_id,)
+    ).fetchone() == ("quarantined",)
+    assert conn.execute(
+        "select status, reason from public.review_queue where object_id = %s", (playbook_id,)
+    ).fetchone() == ("open", "quarantined by alice@example.com: looks wrong")
+
+
+def test_retiring_closes_open_reviews(conn, two_orgs):
+    a, _, alice, _ = two_orgs
+    playbook_id, item_id = quarantined_playbook(conn, a)
+    with as_user(conn, alice):
+        conn.execute(
+            "select public.dashboard_set_playbook_status(%s, 'retired', '')", (playbook_id,)
+        )
+    assert conn.execute(
+        "select status from public.review_queue where id = %s", (item_id,)
+    ).fetchone() == ("rejected",)
+
+
+@pytest.mark.parametrize("status", ["active", "candidate", "bogus"])
+def test_status_actions_cannot_activate_or_invent_states(conn, two_orgs, status):
+    a, _, alice, _ = two_orgs
+    playbook_id = active_playbook(conn, a)
+    with pytest.raises(psycopg.errors.InvalidParameterValue), as_user(conn, alice):
+        conn.execute(
+            "select public.dashboard_set_playbook_status(%s, %s, '')", (playbook_id, status)
+        )
+
+
+def test_outsiders_and_plain_members_cannot_change_playbooks(conn, two_orgs):
+    a, _, _, bob = two_orgs
+    playbook_id = active_playbook(conn, a)
+    viewer = make_user(conn)
+    add_member(conn, org_of(conn, a.project_id), viewer, "member")
+    for who in (bob, viewer):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege), as_user(conn, who):
+            conn.execute(
+                "select public.dashboard_set_playbook_status(%s, 'retired', '')", (playbook_id,)
+            )
