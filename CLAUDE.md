@@ -101,4 +101,13 @@ Run the API locally (reads `.env` for `SERVER_DATABASE_URL` and `RETRACK_KEY_PEP
 set -a && . ./.env && set +a && uv run uvicorn retrack_server.app:app --reload
 ```
 
-Dashboard run commands will be added once its OPEN decisions are made.
+## Commands (dashboard)
+
+```
+cd dashboard
+npm run dev             # http://localhost:3000 (reads dashboard/.env.local)
+npm test                # vitest
+npm run lint && npx tsc --noEmit
+```
+
+`dashboard/.env.local` holds the Supabase URL and publishable key, `RETRACK_KEY_PEPPER` (same as the server's) and `NEXT_PUBLIC_RETRACK_API_URL`; names are in `dashboard/.env.example`.

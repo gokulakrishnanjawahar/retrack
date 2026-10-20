@@ -68,12 +68,12 @@ def test_api_role_has_no_direct_access_to_admin_tables(conn, tenants, table):
         conn.execute(f"select * from public.{table}")
 
 
-@pytest.mark.parametrize("role", ["anon", "authenticated"])
+# Logged-in dashboard users (`authenticated`) are covered in test_dashboard_auth.py.
 @pytest.mark.parametrize(
     "table", ["organizations", "projects", "agents", "members", "api_keys", "runs", "steps"]
 )
-def test_supabase_public_roles_have_no_access(conn, tenants, role, table):
+def test_anonymous_role_has_no_access(conn, tenants, table):
     with conn.transaction(force_rollback=True):
-        conn.execute(f"set local role {role}")
+        conn.execute("set local role anon")
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute(f"select * from public.{table}")

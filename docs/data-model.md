@@ -1,6 +1,6 @@
 # Data model (Supabase Postgres + pgvector)
 
-All tables carrying customer data have `project_id` and row-level security (RLS) policies. The server runs each request as the `retrack_api` role with `app.project_id` set for the transaction; RLS exposes only that project's rows. Supabase's `anon` and `authenticated` roles have no access until dashboard login is decided. API keys are checked by `private.verify_api_key`, the only path from `retrack_api` to `api_keys`. Vectors are `extensions.halfvec(1536)` (gemini-embedding-001 at 1,536 dimensions, half precision), cosine distance, HNSW indexes. Memory tables are written only by role `retrack_pipeline` inside one project (`pipeline_scope`); `retrack_api` has no access to them yet (recall in Phase 6 will add read access). Ask before creating migrations.
+All tables carrying customer data have `project_id` and row-level security (RLS) policies. The server runs each request as the `retrack_api` role with `app.project_id` set for the transaction; RLS exposes only that project's rows. Supabase's `anon` role has no access. Dashboard users (`authenticated`, Supabase Auth) may only READ rows of projects whose organization they belong to (policies `dashboard_members_read`, helpers in schema `access`); they cannot write tables directly and change things only through role-checked `public.dashboard_*` functions (owner or admin). They see an API key's prefix and dates, never its hash. API keys are checked by `private.verify_api_key`, the only path from `retrack_api` to `api_keys`. Vectors are `extensions.halfvec(1536)` (gemini-embedding-001 at 1,536 dimensions, half precision), cosine distance, HNSW indexes. Memory tables are written only by role `retrack_pipeline` inside one project (`pipeline_scope`); `retrack_api` has no access to them yet (recall in Phase 6 will add read access). Ask before creating migrations.
 
 ## Tenancy and access
 | Table | Key fields |
@@ -9,7 +9,8 @@ All tables carrying customer data have `project_id` and row-level security (RLS)
 | projects | id, org_id, name, region, retention_days, trusted_tools text[], task_trusted bool, holdout_rate (default 0.10), created_at |
 | agents | id, project_id, name, framework (e.g. langgraph), recall_threshold (default 0.72), created_at |
 | api_keys | id, project_id, prefix (shown to user, e.g. `rtk_live_ab12`), key_hash, name, created_at, last_used_at, revoked_at |
-| members | org_id, user_id, role |
+| members | org_id, user_id (→ auth.users), role (owner / admin / member) |
+| super_admins | user_id (→ auth.users). Cross-project analytics in the dashboard; Gokul only. Granted with `retrack-admin set-super-admin` |
 
 API keys: format `rtk_live_<48 hex>` (or `rtk_test_`); show once; store only HMAC-SHA256(pepper, secret) plus a prefix (`rtk_live_` + 8 chars) for lookup. Pepper is `RETRACK_KEY_PEPPER`. Support revoke and rotate. Project defaults: `retention_days` 90, `region` ap-south-1.
 
@@ -64,7 +65,10 @@ At ingest a run is linked to the recalls made for its id (`runs.recalled_playboo
 |---|---|
 | usage_daily | project_id, day, runs_captured, recalls_served, distillations, tokens_processed, llm_input_tokens, llm_output_tokens (Retrack's own LLM spend) (primary key: project_id + day) |
 
-Increment with an upsert. Raw `runs` rows (with timestamps) let usage history be rebuilt if metering changes later, so keep them for the project's retention period.
+Increment with an upsert.
+
+## Dashboard functions
+Called by the dashboard as the signed-in user (Supabase RPC). Each checks the caller's role in the database: `dashboard_create_workspace` (organization + project, caller becomes owner), `dashboard_add_api_key` (the dashboard server generates the key and its HMAC with the pepper; only prefix and hash reach the database), `dashboard_revoke_api_key`, `dashboard_update_project` (trust, holdout, retention, rate limit), `dashboard_resolve_review`, `dashboard_is_super_admin`, `dashboard_admin_overview` (super admins only). `runs` is in the `supabase_realtime` publication so the dashboard streams new runs live; RLS applies to Realtime too. Raw `runs` rows (with timestamps) let usage history be rebuilt if metering changes later, so keep them for the project's retention period.
 
 ## Indexes
 - HNSW index on `playbooks.embedding` and `runs.task_embedding` (cosine).

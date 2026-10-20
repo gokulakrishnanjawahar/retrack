@@ -32,6 +32,9 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Ingest rate limit | 600 runs per minute per project by default (`projects.ingest_rate_limit`) | Fixed one-minute windows in `ingest_counters` |
 | Dashboard login | Supabase Auth (decided 2026-10-21) | Same database; row-level security uses the logged-in user; no extra vendor |
 | Dashboard design goal | Dynamic and instantly attractive and credible (Gokul, 2026-10-21) | Live elements, motion, polished data visualisation |
+| Dashboard visual style | Dark premium developer tool (Gokul, 2026-10-21) | Near-black canvas, hairline borders, one violet signal colour; Geist; Motion animations; dark only |
+| Dashboard data access | Supabase client as the signed-in user, RLS for reads, `public.dashboard_*` functions for writes (2026-10-21) | Functions live in `public` with a `dashboard_` prefix rather than a separate exposed schema, so no API settings change is needed. No service-role key in the dashboard |
+| Playbook rollback | Moved to Phase 13 (2026-10-21) | Playbooks only get new versions once fleet sharing proposes changes; until then there is nothing to roll back |
 | ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)

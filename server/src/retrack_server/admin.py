@@ -1,4 +1,4 @@
-"""Admin command for managing customers until the dashboard exists (Phase 12).
+"""Admin command for managing customers (the dashboard covers the same tasks for users).
 
 Runs with the admin database login (DATABASE_URL), never the server login.
 
@@ -9,6 +9,8 @@ Runs with the admin database login (DATABASE_URL), never the server login.
     uv run retrack-admin review-list --project-id <uuid>
     uv run retrack-admin review-approve --item-id <uuid> --reviewer gokul --note "checked"
     uv run retrack-admin review-reject --item-id <uuid> --reviewer gokul --note "poisoned"
+    uv run retrack-admin add-member --email you@example.com --project-id <uuid> --role owner
+    uv run retrack-admin set-super-admin --email you@example.com
 """
 
 import argparse
@@ -110,6 +112,42 @@ def resolve_review(
         conn.execute("update public.playbooks set status = 'retired' where id = %s", (object_id,))
 
 
+MEMBER_ROLES = ("owner", "admin", "member")
+
+
+def _user_id(conn: psycopg.Connection, email: str) -> UUID:
+    row = conn.execute(
+        "select id from auth.users where lower(email) = lower(%s)", (email.strip(),)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"no dashboard account for {email}: sign up first")
+    return row[0]
+
+
+def add_member(conn: psycopg.Connection, email: str, project_id: UUID, role: str) -> None:
+    """Give an existing dashboard account a role in the organization that owns a project."""
+    if role not in MEMBER_ROLES:
+        raise ValueError(f"role must be one of {MEMBER_ROLES}")
+    conn.execute(
+        "insert into public.members (org_id, user_id, role)"
+        " select org_id, %s, %s from public.projects where id = %s"
+        " on conflict (org_id, user_id) do update set role = excluded.role",
+        (_user_id(conn, email), role, project_id),
+    )
+
+
+def set_super_admin(conn: psycopg.Connection, email: str, value: bool) -> None:
+    """Grant or remove cross-project analytics access (docs/decisions.md: Gokul only)."""
+    user_id = _user_id(conn, email)
+    if value:
+        conn.execute(
+            "insert into public.super_admins (user_id) values (%s) on conflict do nothing",
+            (user_id,),
+        )
+    else:
+        conn.execute("delete from public.super_admins where user_id = %s", (user_id,))
+
+
 def set_unrecoverable(conn: psycopg.Connection, signature_id: UUID, value: bool | None) -> None:
     """Force a failure signature's unrecoverable flag, or None to return to the automatic
     rule (5+ occurrences and never recovered)."""
@@ -145,6 +183,13 @@ def main(argv: list[str] | None = None) -> int:
     su = commands.add_parser("set-unrecoverable", help="override a failure's circuit breaker")
     su.add_argument("--signature-id", required=True, type=UUID)
     su.add_argument("--value", required=True, choices=["true", "false", "auto"])
+    am = commands.add_parser("add-member", help="give an account a role in a project's org")
+    am.add_argument("--email", required=True)
+    am.add_argument("--project-id", required=True, type=UUID)
+    am.add_argument("--role", default="owner", choices=MEMBER_ROLES)
+    sa = commands.add_parser("set-super-admin", help="grant or remove cross-project analytics")
+    sa.add_argument("--email", required=True)
+    sa.add_argument("--remove", action="store_true")
     args = parser.parse_args(argv)
 
     url, pepper = os.environ.get("DATABASE_URL"), os.environ.get("RETRACK_KEY_PEPPER")
@@ -179,6 +224,12 @@ def main(argv: list[str] | None = None) -> int:
             choice = {"true": True, "false": False, "auto": None}[args.value]
             set_unrecoverable(conn, args.signature_id, choice)
             print("updated")
+        elif args.command == "add-member":
+            add_member(conn, args.email, args.project_id, args.role)
+            print("member added")
+        elif args.command == "set-super-admin":
+            set_super_admin(conn, args.email, not args.remove)
+            print("super admin removed" if args.remove else "super admin granted")
         elif args.command == "set-trust":
             set_trust(conn, args.project_id, args.tools.split(","), args.task_trusted)
             print("trust settings updated")
