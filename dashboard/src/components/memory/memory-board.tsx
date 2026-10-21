@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Pill, PlaybookStatusBadge } from "@/components/badges";
 import { RelativeTime } from "@/components/relative-time";
+import { FailureTable } from "@/components/memory/failure-table";
 import type { FailureSignature, PlaybookSummary } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
@@ -17,11 +18,13 @@ export function MemoryBoard({
   playbooks,
   failures,
   agents,
+  canManage,
 }: {
   projectId: string;
   playbooks: PlaybookSummary[];
   failures: FailureSignature[];
   agents: Record<string, string>;
+  canManage: boolean;
 }) {
   const [tab, setTab] = useState<"playbooks" | "failures">("playbooks");
   const [status, setStatus] = useState<(typeof STATUSES)[number]>("all");
@@ -134,52 +137,8 @@ export function MemoryBoard({
           </motion.ul>
         )
       ) : (
-        <FailureTable failures={shownFailures} agents={agents} />
+        <FailureTable projectId={projectId} failures={shownFailures} agents={agents} canManage={canManage} />
       )}
-    </div>
-  );
-}
-
-function FailureTable({ failures, agents }: { failures: FailureSignature[]; agents: Record<string, string> }) {
-  const most = Math.max(1, ...failures.map((f) => f.occurrences));
-  if (failures.length === 0) {
-    return <p className="surface rounded-xl px-6 py-14 text-center text-sm text-muted-foreground">No failure signatures yet. Repeated tool failures are grouped here, with any fix your agent found.</p>;
-  }
-  return (
-    <div className="surface overflow-hidden rounded-xl">
-      <div className="grid grid-cols-[1.4fr_1fr_160px_120px_100px] gap-4 border-b border-border px-5 py-2.5 text-[11px] font-medium tracking-wide text-faint uppercase max-lg:hidden">
-        <span>Failure</span>
-        <span>Input shape</span>
-        <span>Occurrences</span>
-        <span>Known fix</span>
-        <span className="text-right">Last seen</span>
-      </div>
-      <ul className="divide-y divide-border">
-        {failures.map((f, i) => {
-          const fixed = f.recoveries > 0;
-          return (
-            <motion.li key={f.id} initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: Math.min(i * 0.02, 0.3) } }} className="grid grid-cols-[1.4fr_1fr_160px_120px_100px] items-center gap-4 px-5 py-3 max-lg:grid-cols-1 max-lg:gap-1.5">
-              <div className="min-w-0">
-                <p className="truncate font-mono text-[12.5px]">
-                  {f.tool_name} <span className="text-danger">{f.error_class}</span>
-                </p>
-                <p className="text-[11px] text-faint">{agents[f.agent_id] ?? "agent"}</p>
-              </div>
-              <code className="truncate font-mono text-[11.5px] text-muted-foreground">{f.input_shape}</code>
-              <div className="flex items-center gap-2">
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.05]">
-                  <motion.div className="h-full rounded-full bg-danger/70" initial={{ width: 0 }} animate={{ width: `${(f.occurrences / most) * 100}%` }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }} />
-                </div>
-                <span className="tabular w-8 text-right font-mono text-[11.5px]">{f.occurrences}</span>
-              </div>
-              <div>
-                {f.unrecoverable ? <Pill tone="danger">unrecoverable</Pill> : fixed ? <Pill tone="success">{f.recoveries} recovered</Pill> : <span className="text-[11.5px] text-faint">none yet</span>}
-              </div>
-              <RelativeTime iso={f.last_seen} className="text-right text-[11.5px] text-faint" />
-            </motion.li>
-          );
-        })}
-      </ul>
     </div>
   );
 }

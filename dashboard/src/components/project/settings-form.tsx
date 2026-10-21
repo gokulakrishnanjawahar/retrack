@@ -161,15 +161,30 @@ function NumberField({
   suffix: string;
   disabled: boolean;
 }) {
+  // Keep the raw text while typing (clearing the field must not jump to the minimum);
+  // clamp once the field loses focus.
+  const [text, setText] = useState(String(value));
+  function commit(raw: string) {
+    const n = Number(raw);
+    const clamped = raw.trim() === "" || Number.isNaN(n) ? value : Math.min(max, Math.max(min, n));
+    setText(String(clamped));
+    onChange(clamped);
+  }
   return (
     <div className="flex items-center gap-2">
       <Input
         type="number"
-        value={value}
+        inputMode="numeric"
+        value={text}
         min={min}
         max={max}
         disabled={disabled}
-        onChange={(e) => onChange(Math.min(max, Math.max(min, Number(e.target.value) || min)))}
+        onChange={(e) => {
+          setText(e.target.value);
+          const n = Number(e.target.value);
+          if (e.target.value.trim() !== "" && !Number.isNaN(n) && n >= min && n <= max) onChange(n);
+        }}
+        onBlur={(e) => commit(e.target.value)}
         className="tabular w-28 text-right"
       />
       <span className="w-10 text-[12.5px] text-faint">{suffix}</span>

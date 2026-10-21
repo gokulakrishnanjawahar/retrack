@@ -29,6 +29,26 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+// Mirrors server/src/retrack_server/recall.py: REPLAY_MIN_USES, REPLAY_MIN_SUCCESS. Similarity
+// (0.95) and exact model and tool versions are checked per task at recall time.
+const REPLAY_MIN_USES = 20;
+const REPLAY_MIN_SUCCESS = 0.9;
+
+function ReplayReadiness({ uses, successes, validatedModels }: { uses: number; successes: number; validatedModels: string[] }) {
+  const rate = uses ? successes / uses : 0;
+  const reasons = [
+    uses < REPLAY_MIN_USES ? `${REPLAY_MIN_USES - uses} more uses` : null,
+    uses && rate < REPLAY_MIN_SUCCESS ? `90% success (now ${Math.round(rate * 100)}%)` : null,
+    validatedModels.length === 0 ? "a validated model" : null,
+  ].filter(Boolean);
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3 text-[12px]">
+      <span className="text-muted-foreground">Plan replay</span>
+      {reasons.length ? <span className="text-right text-faint">needs {reasons.join(", ")}</span> : <Pill tone="brand">eligible for close matches</Pill>}
+    </div>
+  );
+}
+
 export default async function PlaybookPage({ params }: PageProps<"/p/[projectId]/memory/[playbookId]">) {
   const { projectId, playbookId } = await params;
   const [pb, role, agents] = await Promise.all([getPlaybook(projectId, playbookId), getRole(projectId), listAgents(projectId)]);
@@ -96,6 +116,7 @@ export default async function PlaybookPage({ params }: PageProps<"/p/[projectId]
               <Stat label="success" value={pb.uses ? `${Math.round(pb.success_rate * 100)}%` : "–"} />
               <Stat label="confidence" value={`${Math.round(pb.confidence * 100)}%`} />
             </div>
+            <ReplayReadiness uses={pb.uses} successes={pb.successes} validatedModels={pb.validated_models} />
             <div className="border-t border-border px-5 py-3 text-[12px] text-faint">
               {pb.last_success_at ? (
                 <>

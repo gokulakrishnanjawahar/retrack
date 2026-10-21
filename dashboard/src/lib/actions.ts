@@ -140,3 +140,19 @@ export async function setPlaybookStatus(
   revalidatePath(`/p/${projectId}`, "layout");
   return { ok: true };
 }
+
+export async function setUnrecoverable(
+  projectId: string,
+  signatureId: string,
+  value: boolean | null,
+): Promise<ActionResult> {
+  await getUser();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("dashboard_set_unrecoverable", {
+    p_signature_id: signatureId,
+    p_value: value,
+  });
+  if (error) return { ok: false, error: message(error) };
+  revalidatePath(`/p/${projectId}/memory`);
+  return { ok: true };
+}

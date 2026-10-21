@@ -462,3 +462,39 @@ def test_outsiders_and_plain_members_cannot_change_playbooks(conn, two_orgs):
             conn.execute(
                 "select public.dashboard_set_playbook_status(%s, 'retired', '')", (playbook_id,)
             )
+
+
+# Audit fixes (Phase 12) -----------------------------------------------------------------
+
+
+def failure_signature(conn, tenant, occurrences=6, recoveries=0):
+    return conn.execute(
+        "insert into public.failure_signatures (project_id, agent_id, tool_name, error_class,"
+        " input_shape, fingerprint, occurrences, recoveries) values (%s, %s, 'orders_api',"
+        " 'timeout', '{}', %s, %s, %s) returning id",
+        (tenant.project_id, tenant.agent_id, uuid.uuid4().hex, occurrences, recoveries),
+    ).fetchone()[0]
+
+
+def test_owner_overrides_unrecoverable_and_returns_to_automatic(conn, two_orgs):
+    a, _, alice, _ = two_orgs
+    signature_id = failure_signature(conn, a)
+    flags = (
+        "select unrecoverable, unrecoverable_override from public.failure_signatures where id = %s"
+    )
+    with as_user(conn, alice):
+        conn.execute("select public.dashboard_set_unrecoverable(%s, false)", (signature_id,))
+    assert conn.execute(flags, (signature_id,)).fetchone() == (False, False)
+    with as_user(conn, alice):
+        conn.execute("select public.dashboard_set_unrecoverable(%s, null)", (signature_id,))
+    assert conn.execute(flags, (signature_id,)).fetchone() == (True, None)  # 6 seen, 0 recovered
+
+
+def test_outsiders_and_members_cannot_override_unrecoverable(conn, two_orgs):
+    a, _, _, bob = two_orgs
+    signature_id = failure_signature(conn, a)
+    viewer = make_user(conn)
+    add_member(conn, org_of(conn, a.project_id), viewer, "member")
+    for who in (bob, viewer):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege), as_user(conn, who):
+            conn.execute("select public.dashboard_set_unrecoverable(%s, true)", (signature_id,))

@@ -367,6 +367,7 @@ export type FailureSignature = {
   unrecoverable: boolean;
   unrecoverable_override: boolean | null;
   recovery_steps: unknown[];
+  example_run_id: string | null;
   first_seen: string;
   last_seen: string;
 };
@@ -377,7 +378,7 @@ export async function listFailureSignatures(projectId: string): Promise<FailureS
     .from("failure_signatures")
     .select(
       "id, agent_id, tool_name, error_class, input_shape, occurrences, recoveries, unrecoverable," +
-        " unrecoverable_override, recovery_steps, first_seen, last_seen",
+        " unrecoverable_override, recovery_steps, example_run_id, first_seen, last_seen",
     )
     .eq("project_id", projectId)
     .order("occurrences", { ascending: false })
@@ -739,4 +740,28 @@ export async function getAdminOverview(): Promise<AdminOverview> {
     throw new Error(error.message);
   }
   return data as AdminOverview;
+}
+
+export type UsageDay = {
+  day: string;
+  runs_captured: number;
+  recalls_served: number;
+  distillations: number;
+  tokens_processed: number;
+  llm_input_tokens: number;
+  llm_output_tokens: number;
+};
+
+export async function listUsage(projectId: string, days = 30): Promise<UsageDay[]> {
+  const supabase = await createClient();
+  const since = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from("usage_daily")
+    .select("day, runs_captured, recalls_served, distillations, tokens_processed, llm_input_tokens, llm_output_tokens")
+    .eq("project_id", projectId)
+    .gte("day", since)
+    .order("day")
+    .returns<UsageDay[]>();
+  if (error) throw new Error(error.message);
+  return data;
 }
