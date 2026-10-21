@@ -97,12 +97,14 @@ def test_new_success_becomes_a_candidate_playbook_with_provenance(conn, tenants)
         (pb_id,),
     ).fetchone()
     assert provenance == ([run_id], "untrusted", ["orders_api"])
-    assert (
-        conn.execute(
-            "select count(*) from public.playbook_versions where playbook_id = %s", (pb_id,)
-        ).fetchone()[0]
-        == 1
-    )
+    # Version rows keep their embedding, so a rollback restores it (Phase 13).
+    assert conn.execute(
+        "select count(*), bool_and(v.embedding::text = p.embedding::text"
+        " and v.embedding_model = p.embedding_model)"
+        " from public.playbook_versions v join public.playbooks p on p.id = v.playbook_id"
+        " where v.playbook_id = %s group by p.id",
+        (pb_id,),
+    ).fetchone() == (1, True)
     checks, reviews = conn.execute(
         "select passed_automatic_checks,"
         " (select count(*) from public.review_queue where object_id = p.id)"

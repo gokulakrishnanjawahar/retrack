@@ -34,7 +34,9 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Dashboard design goal | Dynamic and instantly attractive and credible (Gokul, 2026-10-21) | Live elements, motion, polished data visualisation |
 | Dashboard visual style | Dark premium developer tool (Gokul, 2026-10-21) | Near-black canvas, hairline borders, one violet signal colour; Geist; Motion animations; dark only |
 | Dashboard data access | Supabase client as the signed-in user, RLS for reads, `public.dashboard_*` functions for writes (2026-10-21) | Functions live in `public` with a `dashboard_` prefix rather than a separate exposed schema, so no API settings change is needed. No service-role key in the dashboard |
-| Playbook rollback | Moved to Phase 13 (2026-10-21) | Playbooks only get new versions once fleet sharing proposes changes; until then there is nothing to roll back |
+| Playbook rollback | Built in Phase 13, dashboard only (owner or admin) | Restores a version's content and its embedding as a new version, so a rollback can itself be undone |
+| API key write access | Read memory, quarantine and retire only (Gokul, 2026-10-21) | Approve and rollback need a person in the dashboard: a leaked or prompt-injected agent key must never put memory into service (CLAUDE.md rule 8). `PATCH /v1/playbooks/{id}` answers 403 for them |
+| Fleet sharing rules | Owners and admins propose ACTIVE playbooks to another agent of the same project, as a new playbook or an update of one of its playbooks; approval by an owner or admin activates it (2026-10-21) | A copy starts with no uses (support 1), keeps the source's confidence and tool versions, and is not yet validated on any model (no plan replay until it is). An update is refused if the target changed after the proposal. The reviewer sees tools the target agent never used and untrusted sources |
 | ORM | None. Plain SQL migrations in `supabase/migrations/` via Supabase CLI | Python DB driver chosen when first needed |
 
 ## OPEN (ask before choosing)

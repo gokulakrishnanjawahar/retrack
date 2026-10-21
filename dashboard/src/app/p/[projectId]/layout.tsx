@@ -3,18 +3,20 @@ import { Backdrop } from "@/components/fx/backdrop";
 import { ProjectSwitcher } from "@/components/shell/project-switcher";
 import { MobileNav, SidebarNav } from "@/components/shell/sidebar-nav";
 import { UserMenu } from "@/components/shell/user-menu";
-import { countOpenReviews, getProject, getRole, getUser, isSuperAdmin, listProjects } from "@/lib/data";
+import { countOpenProposals, countOpenReviews, getProject, getRole, getUser, isSuperAdmin, listProjects } from "@/lib/data";
 
 export default async function ProjectLayout({ children, params }: LayoutProps<"/p/[projectId]">) {
   const { projectId } = await params;
-  const [user, project, projects, role, superAdmin, openReviews] = await Promise.all([
+  const [user, project, projects, role, superAdmin, reviews, proposals] = await Promise.all([
     getUser(),
     getProject(projectId),
     listProjects(),
     getRole(projectId),
     isSuperAdmin(),
     countOpenReviews(projectId),
+    countOpenProposals(projectId),
   ]);
+  const openReviews = reviews + proposals;
 
   return (
     <div className="relative flex min-h-dvh">

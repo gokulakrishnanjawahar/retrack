@@ -4,8 +4,10 @@ Every test runs inside one transaction that is rolled back, so the dev
 database is left unchanged. Tests are skipped when DATABASE_URL is not set.
 """
 
+import json
 import os
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,3 +83,44 @@ def tenants(conn) -> tuple[Tenant, Tenant]:
         "insert into public.organizations (name) values ('test-org') returning id"
     ).fetchone()[0]
     return _make_tenant(conn, org_id, "project-a"), _make_tenant(conn, org_id, "project-b")
+
+
+class DashboardUsers:
+    """Supabase Auth accounts for dashboard tests; everything rolls back with the test."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def make(self, email: str | None = None) -> uuid.UUID:
+        user_id = uuid.uuid4()
+        self.conn.execute(
+            "insert into auth.users (id, email, aud, role, created_at)"
+            " values (%s, %s, 'authenticated', 'authenticated', now())",
+            (user_id, email or f"{user_id}@example.com"),
+        )
+        return user_id
+
+    def add(self, project_id: uuid.UUID, user_id: uuid.UUID, role: str = "owner") -> None:
+        self.conn.execute(
+            "insert into public.members (org_id, user_id, role)"
+            " select org_id, %s, %s from public.projects where id = %s",
+            (user_id, role, project_id),
+        )
+
+    @contextmanager
+    def acting(self, user_id: uuid.UUID, email: str = "user@example.com"):
+        """Run as Supabase's `authenticated` role with a JWT for `user_id`."""
+        claims = {"role": "authenticated", "email": email, "sub": str(user_id)}
+        with self.conn.transaction():
+            self.conn.execute("set local role authenticated")
+            self.conn.execute(
+                "select set_config('request.jwt.claims', %s, true)", (json.dumps(claims),)
+            )
+            yield
+            self.conn.execute("select set_config('request.jwt.claims', '', true)")
+            self.conn.execute("reset role")
+
+
+@pytest.fixture
+def users(conn) -> DashboardUsers:
+    return DashboardUsers(conn)

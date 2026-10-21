@@ -5,11 +5,11 @@ import threading
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 import psycopg
-from fastapi import Depends, FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -17,14 +17,16 @@ from psycopg_pool import ConnectionPool
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException
 
-from retrack_server.api_keys import verify_api_key
+from retrack_server.api_keys import InvalidKeyFormat, key_prefix, verify_api_key
 from retrack_server.config import Settings
 from retrack_server.db import enqueue_run, project_scope
 from retrack_server.embeddings import Embedder, embedder_from_settings
 from retrack_server.evals import list_cases, record_results
 from retrack_server.ingest import ingest
 from retrack_server.llm import LLMClient, llm_from_settings
+from retrack_server.metrics import project_metrics
 from retrack_server.migrations import create_migration, get_migration
+from retrack_server.playbooks import list_playbooks, list_versions, set_status
 from retrack_server.recall import recall
 from retrack_server.redaction import redact_value
 from retrack_server.schemas import (
@@ -33,6 +35,7 @@ from retrack_server.schemas import (
     EvalResultsIn,
     FeedbackIn,
     MigrationIn,
+    PlaybookPatchIn,
     RecallIn,
     RunIn,
 )
@@ -346,3 +349,72 @@ async def read_migration(
     if report is None:
         raise ApiError(404, "migration_not_found", "no migration with this id in this project")
     return JSONResponse(report)
+
+
+@app.get("/v1/playbooks")
+async def playbooks(
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+    agent: str | None = None,
+    status: Literal["active", "candidate", "quarantined", "retired", "all"] = "active",
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> JSONResponse:
+    """This project's playbooks, newest change first (active only unless `status` is set)."""
+    rows = await run_in_threadpool(list_playbooks, conn, project_id, agent, status, limit)
+    return JSONResponse({"playbooks": rows})
+
+
+@app.get("/v1/playbooks/{playbook_id}/versions")
+async def playbook_versions(
+    playbook_id: UUID,
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+) -> JSONResponse:
+    """A playbook's version history, newest first, for diffs."""
+    versions = await run_in_threadpool(list_versions, conn, project_id, playbook_id)
+    if versions is None:
+        raise ApiError(404, "playbook_not_found", "no playbook with this id in this project")
+    return JSONResponse({"playbook_id": str(playbook_id), "versions": versions})
+
+
+@app.patch("/v1/playbooks/{playbook_id}")
+async def change_playbook(
+    playbook_id: UUID,
+    request: Request,
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> JSONResponse:
+    """Quarantine (back to review) or retire a playbook. Approving and rolling back need a
+    person in the dashboard, so an agent's key can never put memory into service."""
+    try:
+        body = PlaybookPatchIn.model_validate_json(await request.body())
+    except ValidationError as exc:
+        raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
+    if body.action in ("approve", "rollback"):
+        raise ApiError(
+            403,
+            "forbidden",
+            "approve and roll back playbooks in the dashboard; API keys can quarantine or retire",
+        )
+    try:
+        who = f"api key {key_prefix((authorization or '').partition(' ')[2].strip())}"
+    except InvalidKeyFormat:
+        who = "api key"
+    status = "quarantined" if body.action == "quarantine" else "retired"
+    result = await run_in_threadpool(
+        set_status, conn, project_id, playbook_id, status, who, body.note
+    )
+    if result is None:
+        raise ApiError(404, "playbook_not_found", "no playbook with this id in this project")
+    return JSONResponse({"id": str(playbook_id), "status": result})
+
+
+@app.get("/v1/metrics")
+async def metrics(
+    conn: Annotated[psycopg.Connection, Depends(get_conn)],
+    project_id: Annotated[UUID, Depends(authenticated_project)],
+    days: Annotated[int, Query(ge=7, le=90)] = 30,
+) -> JSONResponse:
+    """Memory vs holdout: success rate, tokens and cost per run, and recall hit rate."""
+    return JSONResponse(await run_in_threadpool(project_metrics, conn, project_id, days))

@@ -100,3 +100,11 @@ class MigrationIn(BaseModel):
     from_model: ShortText | None = None
     # False when the entry function cannot receive the model (it may run its default).
     model_applied: bool = True
+
+
+class PlaybookPatchIn(BaseModel):
+    # API keys may only take memory out of service; approve and rollback are accepted here
+    # only to answer them with a clear 403 (they happen in the dashboard, by a person).
+    action: Literal["quarantine", "retire", "approve", "rollback"]
+    note: Annotated[str, StringConstraints(max_length=500)] | None = None
+    version: Annotated[int, Field(ge=1)] | None = None

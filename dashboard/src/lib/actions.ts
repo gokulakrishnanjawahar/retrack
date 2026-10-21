@@ -17,6 +17,7 @@ function message(error: { code?: string; message: string }) {
     case "23514":
       return "One of the values is out of range.";
     case "22023":
+    case "P0002":
       return error.message;
     default:
       return "Something went wrong. Try again.";
@@ -155,4 +156,58 @@ export async function setUnrecoverable(
   if (error) return { ok: false, error: message(error) };
   revalidatePath(`/p/${projectId}/memory`);
   return { ok: true };
+}
+
+export async function proposePlaybook(
+  projectId: string,
+  playbookId: string,
+  input: { targetAgentId: string; targetPlaybookId: string | null; note: string },
+): Promise<ActionResult> {
+  await getUser();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("dashboard_propose_playbook", {
+    p_playbook_id: playbookId,
+    p_target_agent_id: input.targetAgentId,
+    p_target_playbook_id: input.targetPlaybookId,
+    p_note: input.note.slice(0, 1000),
+  });
+  if (error) return { ok: false, error: message(error) };
+  revalidatePath(`/p/${projectId}`, "layout");
+  return { ok: true };
+}
+
+export async function resolveProposal(
+  projectId: string,
+  proposalId: string,
+  approve: boolean,
+  note: string,
+): Promise<ActionResult<{ playbookId: string | null }>> {
+  await getUser();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("dashboard_resolve_proposal", {
+    p_proposal_id: proposalId,
+    p_approve: approve,
+    p_note: note.slice(0, 1000),
+  });
+  if (error) return { ok: false, error: message(error) };
+  revalidatePath(`/p/${projectId}`, "layout");
+  return { ok: true, playbookId: (data as string | null) ?? null };
+}
+
+export async function rollbackPlaybook(
+  projectId: string,
+  playbookId: string,
+  version: number,
+  note: string,
+): Promise<ActionResult<{ version: number }>> {
+  await getUser();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("dashboard_rollback_playbook", {
+    p_playbook_id: playbookId,
+    p_version: version,
+    p_note: note.slice(0, 500),
+  });
+  if (error) return { ok: false, error: message(error) };
+  revalidatePath(`/p/${projectId}`, "layout");
+  return { ok: true, version: data as number };
 }

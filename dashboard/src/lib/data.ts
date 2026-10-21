@@ -295,6 +295,7 @@ export type PlaybookDetail = PlaybookSummary & {
   steps: Step[] | string[];
   pitfalls: string;
   tool_versions: Record<string, string>;
+  origin_playbook_id: string | null;
   approved_by: string | null;
   approved_at: string | null;
   created_at: string;
@@ -316,7 +317,7 @@ export async function getPlaybook(projectId: string, playbookId: string): Promis
         "id, agent_id, title, status, uses, successes, success_rate, confidence, trusted_support," +
           " untrusted_sources, quarantined_sources, support_count, validated_models, last_success_at," +
           " version, updated_at, task_pattern, preconditions, steps, pitfalls, tool_versions," +
-          " approved_by, approved_at, created_at",
+          " origin_playbook_id, approved_by, approved_at, created_at",
       )
       .eq("project_id", projectId)
       .eq("id", playbookId)
@@ -764,4 +765,68 @@ export async function listUsage(projectId: string, days = 30): Promise<UsageDay[
     .returns<UsageDay[]>();
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Fleet sharing (Phase 13) -------------------------------------------------------------------
+
+export type Proposal = {
+  id: string;
+  source_playbook_id: string;
+  source_version: number;
+  target_agent_id: string;
+  target_playbook_id: string | null;
+  snapshot: Record<string, unknown>;
+  checks: { check: string; detail: string }[];
+  proposed_by: string;
+  note: string | null;
+  created_at: string;
+  sourceAgentId: string | null;
+  // The target playbook's current content, for the diff (null when the proposal adds a new one).
+  targetSnapshot: Record<string, unknown> | null;
+  targetTitle: string | null;
+};
+
+export async function listOpenProposals(projectId: string): Promise<Proposal[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("playbook_proposals")
+    .select("id, source_playbook_id, source_version, target_agent_id, target_playbook_id, snapshot, checks, proposed_by, note, created_at")
+    .eq("project_id", projectId)
+    .eq("status", "open")
+    .order("created_at")
+    .returns<Omit<Proposal, "sourceAgentId" | "targetSnapshot" | "targetTitle">[]>();
+  if (error) throw new Error(error.message);
+  if (data.length === 0) return [];
+  const ids = [...new Set(data.flatMap((p) => [p.source_playbook_id, p.target_playbook_id]).filter((id): id is string => Boolean(id)))];
+  const { data: playbooks } = await supabase
+    .from("playbooks")
+    .select("id, agent_id, title, task_pattern, preconditions, steps, pitfalls")
+    .in("id", ids);
+  const byId = new Map((playbooks ?? []).map((p) => [p.id as string, p as Record<string, unknown>]));
+  return data.map((p) => {
+    const target = p.target_playbook_id ? byId.get(p.target_playbook_id) : undefined;
+    return {
+      ...p,
+      sourceAgentId: (byId.get(p.source_playbook_id)?.agent_id as string) ?? null,
+      targetSnapshot: target ?? null,
+      targetTitle: (target?.title as string) ?? null,
+    };
+  });
+}
+
+export async function countOpenProposals(projectId: string): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("playbook_proposals")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("status", "open");
+  return count ?? 0;
+}
+
+export async function getPlaybookOrigin(originId: string | null): Promise<{ id: string; title: string; agent_id: string } | null> {
+  if (!originId) return null;
+  const supabase = await createClient();
+  const { data } = await supabase.from("playbooks").select("id, title, agent_id").eq("id", originId).maybeSingle();
+  return (data as { id: string; title: string; agent_id: string } | null) ?? null;
 }

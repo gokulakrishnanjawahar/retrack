@@ -527,9 +527,9 @@ def _success(state: DistillState, config: RunnableConfig) -> dict[str, Any]:
     ).fetchone()[0]
     conn.execute(
         "insert into public.playbook_versions"
-        " (project_id, playbook_id, version, snapshot, change_reason)"
-        " values (%s, %s, 1, %s, 'created from run')",
-        (state["project_id"], playbook_id, Jsonb(content)),
+        " (project_id, playbook_id, version, snapshot, change_reason, embedding, embedding_model)"
+        " values (%s, %s, 1, %s, 'created from run', %s::extensions.halfvec, %s)",
+        (state["project_id"], playbook_id, Jsonb(content), vector, embedder.model),
     )
     _provenance(conn, state, "playbook", playbook_id)
     for check, detail in blocks:

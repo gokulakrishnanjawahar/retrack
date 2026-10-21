@@ -3,10 +3,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Pill, PlaybookStatusBadge, SectionCard } from "@/components/badges";
 import { PlaybookActions } from "@/components/memory/playbook-actions";
+import { ShareDialog } from "@/components/memory/share-dialog";
 import { VersionHistory } from "@/components/memory/version-history";
 import { RelativeTime } from "@/components/relative-time";
 import { PageBody } from "@/components/shell/page-header";
-import { getPlaybook, getRole, listAgents } from "@/lib/data";
+import { getPlaybook, getPlaybookOrigin, getRole, listAgents, listPlaybooks } from "@/lib/data";
 import { stepText } from "@/lib/diff";
 
 export const metadata: Metadata = { title: "Playbook" };
@@ -51,8 +52,14 @@ function ReplayReadiness({ uses, successes, validatedModels }: { uses: number; s
 
 export default async function PlaybookPage({ params }: PageProps<"/p/[projectId]/memory/[playbookId]">) {
   const { projectId, playbookId } = await params;
-  const [pb, role, agents] = await Promise.all([getPlaybook(projectId, playbookId), getRole(projectId), listAgents(projectId)]);
+  const [pb, role, agents, all] = await Promise.all([
+    getPlaybook(projectId, playbookId),
+    getRole(projectId),
+    listAgents(projectId),
+    listPlaybooks(projectId),
+  ]);
   const canManage = role === "owner" || role === "admin";
+  const origin = await getPlaybookOrigin(pb.origin_playbook_id);
   const sources = pb.provenance?.source_run_ids ?? [];
 
   return (
@@ -69,10 +76,29 @@ export default async function PlaybookPage({ params }: PageProps<"/p/[projectId]
             </span>
           </div>
           <h1 className="text-gradient max-w-3xl text-2xl font-semibold tracking-tight">{pb.title}</h1>
-          {pb.approved_by ? <p className="text-[12px] text-faint">Approved by {pb.approved_by}</p> : null}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-faint">
+            {pb.approved_by ? <span>Approved by {pb.approved_by}</span> : null}
+            {origin ? (
+              <span>
+                Shared from{" "}
+                <Link href={`/p/${projectId}/memory/${origin.id}`} className="text-muted-foreground underline-offset-2 hover:underline">
+                  {agents[origin.agent_id] ?? "another agent"}: {origin.title}
+                </Link>
+              </span>
+            ) : null}
+          </div>
         </div>
         {canManage ? (
           <div className="flex gap-2">
+            {pb.status === "active" ? (
+              <ShareDialog
+                projectId={projectId}
+                playbookId={pb.id}
+                sourceAgentId={pb.agent_id}
+                agents={agents}
+                targetPlaybooks={all.map((p) => ({ id: p.id, agent_id: p.agent_id, title: p.title, status: p.status }))}
+              />
+            ) : null}
             <PlaybookActions projectId={projectId} playbookId={pb.id} status={pb.status} />
           </div>
         ) : null}
@@ -201,7 +227,7 @@ export default async function PlaybookPage({ params }: PageProps<"/p/[projectId]
 
       {pb.versions.length ? (
         <SectionCard title="Version history" className="mt-4">
-          <VersionHistory versions={pb.versions} />
+          <VersionHistory versions={pb.versions} liveVersion={pb.version} restore={canManage ? { projectId, playbookId: pb.id } : undefined} />
         </SectionCard>
       ) : null}
     </PageBody>
