@@ -35,6 +35,8 @@ The agent still validates the result. Any failure on replay demotes the playbook
 - After scoring, update each recalled playbook's `uses` and `success_rate`.
 - Auto-retire playbooks whose success rate falls below a floor after enough uses.
 
+**Content changes and replay:** an approved fleet update or a rollback replaces a playbook's steps and clears its `validated_models`, so plan replay stays off until the new content is validated on the model again (`retrack migrate`).
+
 ## Holdout
 A configurable slice of runs (default 10%) gets no memory. Metrics compare holdout vs treated runs on success rate, tokens and cost.
 

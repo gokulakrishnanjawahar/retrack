@@ -316,3 +316,54 @@ def test_pipeline_role_can_quarantine_through_the_shared_rule(conn, fleet):
             "select private.set_playbook_status(%s, %s, 'retired', 'x', '')",
             (fleet["b"].project_id, fleet["source"]),
         ).fetchone() == (None,)
+
+
+# Audit fixes ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", ["retired", "quarantined"])
+def test_approval_is_refused_when_the_source_left_service(conn, fleet, users, status):
+    with users.acting(fleet["alice"]):
+        proposal_id = propose(conn, fleet["source"], fleet["target_agent"])
+    conn.execute("update public.playbooks set status = %s where id = %s", (status, fleet["source"]))
+    with pytest.raises(psycopg.errors.InvalidParameterValue), users.acting(fleet["alice"]):
+        resolve(conn, proposal_id, True)
+    with users.acting(fleet["alice"]):
+        resolve(conn, proposal_id, False)  # rejecting is still possible
+
+
+def test_approving_an_update_closes_the_targets_open_reviews(conn, fleet, users):
+    a = fleet["a"]
+    target = add_playbook(
+        conn, a.project_id, fleet["target_agent"], title="Refunds", steps=TARGET_STEPS
+    )
+    conn.execute("update public.playbooks set status = 'quarantined' where id = %s", (target,))
+    item = conn.execute(
+        "insert into public.review_queue (project_id, object_type, object_id, reason)"
+        " values (%s, 'playbook', %s, 'quarantined') returning id",
+        (a.project_id, target),
+    ).fetchone()[0]
+    with users.acting(fleet["alice"], "alice@example.com"):
+        resolve(conn, propose(conn, fleet["source"], fleet["target_agent"], target), True)
+    status, reviewer, note = conn.execute(
+        "select status, reviewer, resolution_note from public.review_queue where id = %s", (item,)
+    ).fetchone()
+    assert (status, reviewer) == ("approved", "alice@example.com")
+    assert "fleet proposal" in note
+
+
+def test_content_changes_clear_model_validation_so_replay_waits(conn, fleet, users):
+    """Plan replay needs the content validated on the model; new steps are not validated."""
+    a = fleet["a"]
+    target = add_playbook(
+        conn, a.project_id, fleet["target_agent"], title="Refunds", steps=TARGET_STEPS
+    )
+    conn.execute("update public.playbooks set validated_models = '{m1}' where id = %s", (target,))
+    with users.acting(fleet["alice"]):
+        resolve(conn, propose(conn, fleet["source"], fleet["target_agent"], target), True)
+    validated = "select validated_models from public.playbooks where id = %s"
+    assert conn.execute(validated, (target,)).fetchone() == ([],)
+    conn.execute("update public.playbooks set validated_models = '{m1}' where id = %s", (target,))
+    with users.acting(fleet["alice"]):
+        conn.execute("select public.dashboard_rollback_playbook(%s, 1, '')", (target,))
+    assert conn.execute(validated, (target,)).fetchone() == ([],)

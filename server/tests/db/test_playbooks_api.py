@@ -195,3 +195,10 @@ def test_metrics_compare_memory_with_holdout(client, conn, auth, tenants):
 @pytest.mark.parametrize("days", [3, 91, "x"])
 def test_metrics_range_is_validated(client, auth, days):
     assert client.get(f"/v1/metrics?days={days}", headers=auth).status_code == 422
+
+
+def test_oversized_patch_body_is_413(client, conn, auth, tenants):
+    a, _ = tenants
+    playbook_id = playbook(conn, a)
+    body = {"action": "retire", "note": "x" * 20_000}
+    assert client.patch(f"/v1/playbooks/{playbook_id}", json=body, headers=auth).status_code == 413

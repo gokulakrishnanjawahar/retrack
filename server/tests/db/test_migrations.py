@@ -201,3 +201,8 @@ def test_other_projects_migrations_are_invisible(client, conn, auth, tenants):
         },
     )
     assert posted.status_code == 404
+
+
+def test_oversized_migration_body_is_413(client, auth):
+    body = {"agent": "support-agent", "to_model": "m", "from_model": "x" * 20_000}
+    assert client.post("/v1/migrations", json=body, headers=auth).status_code == 413

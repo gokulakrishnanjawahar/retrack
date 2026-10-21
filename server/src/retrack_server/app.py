@@ -328,8 +328,11 @@ async def start_migration(
     project_id: Annotated[UUID, Depends(authenticated_project)],
 ) -> JSONResponse:
     """Open a model-migration report; `retrack migrate` then posts results with its id."""
+    raw = await request.body()
+    if len(raw) > MAX_FEEDBACK_BYTES:
+        raise ApiError(413, "payload_too_large", f"request body exceeds {MAX_FEEDBACK_BYTES} bytes")
     try:
-        body = MigrationIn.model_validate_json(await request.body())
+        body = MigrationIn.model_validate_json(raw)
     except ValidationError as exc:
         raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
     migration_id = await run_in_threadpool(create_migration, conn, project_id, body)
@@ -387,8 +390,11 @@ async def change_playbook(
 ) -> JSONResponse:
     """Quarantine (back to review) or retire a playbook. Approving and rolling back need a
     person in the dashboard, so an agent's key can never put memory into service."""
+    raw = await request.body()
+    if len(raw) > MAX_FEEDBACK_BYTES:
+        raise ApiError(413, "payload_too_large", f"request body exceeds {MAX_FEEDBACK_BYTES} bytes")
     try:
-        body = PlaybookPatchIn.model_validate_json(await request.body())
+        body = PlaybookPatchIn.model_validate_json(raw)
     except ValidationError as exc:
         raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
     if body.action in ("approve", "rollback"):
