@@ -27,10 +27,11 @@ export default async function ReviewPage({ params }: PageProps<"/p/[projectId]/r
         description="Memory waiting for a person: playbooks proposed across agents, and memory the firewall held back. Approving makes it active and records you as the reviewer."
       />
       <div className="space-y-8">
-        <ProposalQueue projectId={projectId} proposals={proposals} agents={agents} canManage={canManage} />
+        {/* Keyed by the items: the queues keep resolved cards out locally, and remount when the server's list changes. */}
+        <ProposalQueue key={proposals.map((p) => p.id).join()} projectId={projectId} proposals={proposals} agents={agents} canManage={canManage} />
         <section className="space-y-3">
           {proposals.length ? <h2 className="text-sm font-medium text-muted-foreground">Held back by the firewall · {items.length}</h2> : null}
-          <ReviewQueue projectId={projectId} items={items} canManage={canManage} />
+          <ReviewQueue key={items.map((i) => i.id).join()} projectId={projectId} items={items} canManage={canManage} />
         </section>
       </div>
       <SectionCard title={`Quarantined runs · ${quarantined.length}`} className="mt-8">
