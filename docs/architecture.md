@@ -65,7 +65,7 @@ LLM calls (from Phase 4) use Claude Haiku 5.5 (about $0.0004 per judge call); cu
 | Store | All structured data and vector index | Supabase Postgres + pgvector (decided) |
 | Recall API | Hybrid search (vector + full-text + metadata filters), rerank, confidence gate | FastAPI on Vercel (`bom1`) |
 | Regression runner | Replays eval cases; model-migration report | Python CLI + GitHub Action |
-| Dashboard | ROI holdout charts, live run feed, review and quarantine queues, fleet proposals, playbook diff and rollback, API key management, super-admin analytics | Next.js 16 on Vercel (project `retrack-dashboard`, `bom1`); Supabase Auth; reads under RLS, writes through `dashboard_*` functions |
+| Dashboard | ROI holdout charts, live run feed, review and quarantine queues, fleet proposals, playbook diff and rollback, API key management, super-admin analytics | Next.js 16 on Vercel at `retrackai.vercel.app` (project `retrack-dashboard`, `bom1`); Supabase Auth; reads under RLS, writes through `dashboard_*` functions |
 | Trace archive | Compressed full traces, retention per project | Object storage (Supabase Storage likely; confirm) |
 
 ## Key design principles
