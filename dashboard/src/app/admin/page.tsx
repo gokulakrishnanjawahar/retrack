@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AutoRefresh } from "@/components/admin/auto-refresh";
@@ -8,7 +8,8 @@ import { Logo } from "@/components/brand/logo";
 import { Backdrop } from "@/components/fx/backdrop";
 import { KpiCard } from "@/components/overview/kpi-card";
 import { RelativeTime } from "@/components/relative-time";
-import { getAdminOverview, getUser } from "@/lib/data";
+import { getAdminOverview, getAdminProjectStats, getUser } from "@/lib/data";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Admin" };
 
@@ -16,8 +17,16 @@ function compact(n: number) {
   return Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
-export default async function AdminPage() {
-  const [user, o] = await Promise.all([getUser(), getAdminOverview()]);
+const RANGES = [7, 30, 90] as const;
+
+function pct(value: number | null) {
+  return value === null ? "–" : `${(value * 100).toFixed(1)}%`;
+}
+
+export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
+  const sp = await searchParams;
+  const days = RANGES.find((d) => String(d) === sp.days) ?? 30;
+  const [user, o, projects] = await Promise.all([getUser(), getAdminOverview(), getAdminProjectStats(days)]);
   const unhealthy = o.cron.filter((c) => c.active && c.status && c.status !== "succeeded");
   return (
     <div className="relative min-h-dvh">
@@ -41,11 +50,13 @@ export default async function AdminPage() {
           <p className="text-sm text-muted-foreground">Only accounts in super_admins can open this page.</p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <KpiCard index={0} label="Users" value={o.users} footnote={`${o.users_7d} new this week`} />
-          <KpiCard index={1} label="Organizations · projects" value={o.organizations} footnote={`${o.projects} projects`} />
+          <KpiCard index={1} label="Organizations" value={o.organizations} footnote={`${o.projects} projects`} />
           <KpiCard index={2} label="Runs · 7 days" value={o.runs_7d} spark={o.daily.slice(-14).map((d) => d.runs)} footnote={`${compact(o.runs_total)} all time`} />
-          <KpiCard index={3} label="Active playbooks" value={o.playbooks_active} footnote={`${o.reviews_open} reviews open`} />
+          <KpiCard index={3} label="Success rate · 30 days" value={o.success_rate_30d === null ? null : o.success_rate_30d * 100} format="percent" footnote="Runs with a verified outcome, all projects" />
+          <KpiCard index={4} label="Agent spend · 30 days" value={o.agent_cost_30d} format="usd" footnote="What customers' agents reported spending" />
+          <KpiCard index={5} label="Active playbooks" value={o.playbooks_active} footnote={`${o.reviews_open} reviews open`} />
         </div>
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.5fr_1fr]">
@@ -80,26 +91,7 @@ export default async function AdminPage() {
           </SectionCard>
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-          <SectionCard title="Most active projects · 7 days">
-            <ul className="divide-y divide-border">
-              {o.top_projects.map((p, i) => {
-                const max = Math.max(1, ...o.top_projects.map((t) => t.runs_7d));
-                return (
-                  <li key={p.id} className="grid grid-cols-[24px_1fr_1fr_70px] items-center gap-3 px-5 py-3 text-[12.5px]">
-                    <span className="font-mono text-faint">{i + 1}</span>
-                    <span className="truncate">
-                      {p.project} <span className="text-faint">· {p.organization}</span>
-                    </span>
-                    <div className="h-1 overflow-hidden rounded-full bg-white/[0.05]">
-                      <div className="h-full rounded-full bg-brand/80" style={{ width: `${(p.runs_7d / max) * 100}%` }} />
-                    </div>
-                    <span className="tabular text-right font-mono">{p.runs_7d.toLocaleString("en-US")}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </SectionCard>
+        <div className="mt-4 grid gap-4">
           <SectionCard title="Usage · 30 days">
             <div className="grid grid-cols-2 gap-5 p-5">
               <div>
@@ -121,6 +113,73 @@ export default async function AdminPage() {
             </div>
           </SectionCard>
         </div>
+        <SectionCard
+          title={`Projects · last ${days} days`}
+          className="mt-4"
+          action={
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-border p-0.5">
+                {RANGES.map((d) => (
+                  <Link
+                    key={d}
+                    href={`/admin?days=${d}`}
+                    className={cn("rounded-md px-2 py-0.5 font-mono text-[11px]", d === days ? "bg-white/[0.08] text-foreground" : "text-muted-foreground hover:text-foreground")}
+                  >
+                    {d}d
+                  </Link>
+                ))}
+              </div>
+              <a href={`/admin/export?days=${days}`} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground">
+                <Download className="size-3.5" /> Export CSV
+              </a>
+            </div>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] text-[12.5px]">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] font-medium tracking-wide text-faint uppercase">
+                  <th className="px-5 py-2.5 font-medium">Project</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Runs</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Success</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Memory lift</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Recall hits</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Agent cost</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Retrack LLM tokens</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Playbooks</th>
+                  <th className="px-5 py-2.5 text-right font-medium">Last run</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {projects.map((p) => (
+                  <tr key={p.project_id} className="transition-colors hover:bg-white/[0.02]">
+                    <td className="px-5 py-3">
+                      <span className="block truncate">{p.project}</span>
+                      <span className="block truncate text-[11px] text-faint">
+                        {p.organization} · {p.members} member{p.members === 1 ? "" : "s"}
+                      </span>
+                    </td>
+                    <td className="tabular px-3 py-3 text-right font-mono">{p.runs.toLocaleString("en-US")}</td>
+                    <td className="tabular px-3 py-3 text-right font-mono">{pct(p.success_rate)}</td>
+                    <td className={cn("tabular px-3 py-3 text-right font-mono", p.lift_points !== null && p.lift_points < 0 && "text-danger")}>
+                      {p.lift_points === null ? "–" : `${p.lift_points >= 0 ? "+" : ""}${p.lift_points.toFixed(1)}`}
+                      {p.lift_points !== null && p.holdout_known < 20 ? <span className="text-faint">*</span> : null}
+                    </td>
+                    <td className="tabular px-3 py-3 text-right font-mono">{pct(p.recall_hit_rate)}</td>
+                    <td className="tabular px-3 py-3 text-right font-mono">${p.agent_cost_usd.toFixed(2)}</td>
+                    <td className="tabular px-3 py-3 text-right font-mono">{compact(p.llm_input_tokens + p.llm_output_tokens)}</td>
+                    <td className="tabular px-3 py-3 text-right font-mono">
+                      {p.playbooks_active}
+                      {p.open_reviews ? <span className="text-warning"> · {p.open_reviews} to review</span> : null}
+                    </td>
+                    <td className="px-5 py-3 text-right text-faint">{p.last_run_at ? <RelativeTime iso={p.last_run_at} /> : "never"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-border px-5 py-2.5 text-[11px] text-faint">* fewer than 20 holdout runs with a known outcome, so the lift is not yet reliable. The CSV has every column, including token counts and failure signatures.</p>
+        </SectionCard>
       </main>
     </div>
   );

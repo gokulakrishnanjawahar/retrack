@@ -720,6 +720,8 @@ export type AdminOverview = {
   users_7d: number;
   runs_total: number;
   runs_7d: number;
+  success_rate_30d: number | null;
+  agent_cost_30d: number;
   playbooks_active: number;
   reviews_open: number;
   queue_depth: number;
@@ -829,4 +831,41 @@ export async function getPlaybookOrigin(originId: string | null): Promise<{ id: 
   const supabase = await createClient();
   const { data } = await supabase.from("playbooks").select("id, title, agent_id").eq("id", originId).maybeSingle();
   return (data as { id: string; title: string; agent_id: string } | null) ?? null;
+}
+
+export type ProjectStats = {
+  project_id: string;
+  project: string;
+  organization: string;
+  created_at: string;
+  members: number;
+  runs: number;
+  known: number;
+  successes: number;
+  success_rate: number | null;
+  lift_points: number | null;
+  holdout_known: number;
+  recalls: number;
+  recall_hit_rate: number | null;
+  agent_tokens: number;
+  agent_cost_usd: number;
+  llm_input_tokens: number;
+  llm_output_tokens: number;
+  playbooks_active: number;
+  failure_signatures: number;
+  open_reviews: number;
+  last_run_at: string | null;
+};
+
+// Per-project analytics for the super admin (table and CSV export); 404 for anyone else.
+export async function getAdminProjectStats(days = 30): Promise<ProjectStats[]> {
+  await getUser();
+  if (!(await isSuperAdmin())) notFound();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("dashboard_admin_project_stats", { p_days: days });
+  if (error) {
+    if (error.code === "42501") notFound();
+    throw new Error(error.message);
+  }
+  return data as ProjectStats[];
 }

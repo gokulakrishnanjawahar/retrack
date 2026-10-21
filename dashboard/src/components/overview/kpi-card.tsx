@@ -11,6 +11,7 @@ const FORMATS = {
   number: (n: number) => Math.round(n).toLocaleString("en-US"),
   percent: (n: number) => `${n.toFixed(1)}%`,
   ms: (n: number) => `${Math.round(n)} ms`,
+  usd: (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
   compact: (n: number) => Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n),
 };
 
