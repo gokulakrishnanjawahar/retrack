@@ -38,12 +38,13 @@ This file is short on purpose. Before any feature work, read the relevant file i
 - **Python tooling:** uv (packages, Python version), pytest, ruff.
 - **Repo:** monorepo (layout below).
 - **Developer machine:** macOS (Apple Silicon). Give macOS commands.
+- **Source and distribution:** closed source, hosted SaaS (like Supermemory). Only the `sdk/` connector is published: PyPI `retrack-ai`, MIT licence. Everything else stays private.
 
 ## OPEN decisions: ask Gokul before choosing
 
 Do not pick any of these yourself. If a task depends on one, stop and ask. Full list and context in `docs/decisions.md`.
 
-- Open source vs closed source, and licence
+- Object storage for traces
 
 When an open decision blocks you, write code behind an interface (e.g. an `Embedder` or `LLMClient` protocol) only if Gokul agrees.
 
@@ -60,7 +61,7 @@ retrack/
 └── benchmarks/      # benchmark harness and task sets
 ```
 
-Keep `sdk/` independent of `server/` (no imports across them; they talk only over the HTTP API). This keeps the open-source option available later.
+Keep `sdk/` independent of `server/` (no imports across them; they talk only over the HTTP API). The connector is published on its own (MIT) while the server stays private, so nothing from `server/` may leak into it.
 
 ## Working rules
 

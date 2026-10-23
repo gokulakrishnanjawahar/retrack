@@ -13,10 +13,13 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | SDK languages | Python first, TypeScript later | |
 | Dashboard framework | Next.js | |
 | SDK authentication | Per-project API keys, stored hashed, revocable | |
-| Repo | Monorepo; may restructure for open source later | Keep `sdk/` independent of `server/` |
+| Repo | Monorepo | Keep `sdk/` independent of `server/`, so the connector can be published on its own |
+| Source | Closed source for now (Gokul, 2026-10-23). Server, pipelines, dashboard and migrations stay private | May be revisited later |
+| Distribution | Hosted SaaS, like Supermemory (Gokul, 2026-10-23). Customers sign up in the dashboard and get an API key; the only thing they install is the thin client connector in `sdk/` | API-only (no package) and an LLM proxy were considered; a proxy may come with the production SaaS |
+| Connector package | Published on PyPI as `retrack-ai` (import name stays `retrack`; `retrack` on PyPI belongs to an unrelated project), MIT licence (Gokul, 2026-10-23) | The licence covers the connector only. Who runs the publish is not decided yet |
 | Python tooling | uv, pytest, ruff | |
 | Developer OS | macOS (Apple Silicon) | |
-| Git | GitHub remote: gokulakrishnanjawahar/retrack, branch `main`; private while building | Open vs closed source decided after the product is built |
+| Git | GitHub remote: gokulakrishnanjawahar/retrack, branch `main`; private | Closed source (see Source) |
 | Pricing | Not decided; out of scope for code | Only record usage |
 | Phase order | See `plan.md` (2026-10-15) | Change only with Gokul's approval |
 | Local development | Dev Supabase cloud project (no Docker); migrations applied with Supabase CLI `db push` | Tests that need a database run against it |
@@ -25,6 +28,7 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Worker trigger | Supabase Cron (`pg_cron` + `pg_net`) calls a secret-protected `/internal/drain` endpoint every minute | Free; defined in SQL migrations. GitHub Actions and Vercel Hobby cron rejected (too slow) |
 | LLM (judge, distiller, firewall classifier) | Claude Haiku 5.5 (Anthropic), low effort by default; raise effort per job only if evals show it helps. All calls go through a provider-agnostic `LLMClient` interface | Decided 2026-10-19. Prompts stay under 100k tokens (cheaper price tier). Compared against Gemini 2.5 Flash-Lite, which is lower quality and being retired |
 | Embedding model | `gemini-embedding-001` on Google Vertex AI, region `asia-south1` (Mumbai), 1,536 dimensions, behind an `Embedder` interface | Decided 2026-10-19. Top MTEB score among API models; 38 ms network from India vs 200-320 ms for Voyage, OpenAI, Gemini global and others (measured); paid Vertex does not train on data and processing stays in India. Upgrade to Gemini Embedding 2 when it is offered in Mumbai (re-embed; model recorded per vector). Vercel authenticates to Google keylessly via OIDC |
+| LLM provider for the prototype | Anthropic (Claude Haiku 5.5) on Retrack's own key, about $2 of credit; switch to OpenRouter when it runs out (Gokul, 2026-10-23) | Needs an OpenRouter implementation of `LLMClient` before the switch. When credit runs out, runs are retried 5 times, then stay `unknown` without judging or learning (nothing breaks, but nothing is learned) |
 | LLM keys at launch | Customers can bring their own LLM key (encrypted, never logged); Retrack's own key is used for development and testing | Testing budget about $5 |
 | Continuous integration | Deferred (decided 2026-10-20). The poisoning suite runs locally in the full test suite before each phase is committed; revisit CI when there are collaborators or customers | Deviation from firewall.md ("run it in CI") |
 | AI-judged eval assertions | Deferred until customers can bring their own LLM key (decided 2026-10-20) | `retrack test` checks tools, order, known failures and expected text deterministically |
@@ -43,5 +47,4 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 ## OPEN (ask before choosing)
 | Area | Options under consideration | Blocks |
 |---|---|---|
-| Open vs closed source, licence | Decide after the product is built; repo stays private until then | Repo structure, licence file |
 | Object storage for traces | Supabase Storage likely | Trace archive |
