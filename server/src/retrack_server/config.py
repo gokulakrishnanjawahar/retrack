@@ -19,7 +19,8 @@ class Settings:
     # Embeddings (Vertex AI). Off unless RETRACK_EMBEDDINGS_ENABLED=true AND a project is set.
     embeddings_enabled: bool = False
     google_cloud_project: str | None = None
-    google_cloud_location: str = "asia-south1"
+    # gemini-embedding-2 is served only from the global endpoint (not asia-south1, 2026-10-24).
+    google_cloud_location: str = "global"
     # Keyless sign-in from Vercel (gcp_auth). Without both, Google's default credentials apply.
     google_workload_identity_provider: str | None = None
     google_service_account_email: str | None = None
@@ -39,7 +40,7 @@ class Settings:
             llm_effort=os.environ.get("RETRACK_LLM_EFFORT") or "low",
             embeddings_enabled=os.environ.get("RETRACK_EMBEDDINGS_ENABLED", "").lower() == "true",
             google_cloud_project=os.environ.get("GOOGLE_CLOUD_PROJECT") or None,
-            google_cloud_location=os.environ.get("GOOGLE_CLOUD_LOCATION") or "asia-south1",
+            google_cloud_location=os.environ.get("GOOGLE_CLOUD_LOCATION") or "global",
             google_workload_identity_provider=(
                 os.environ.get("GOOGLE_WORKLOAD_IDENTITY_PROVIDER") or None
             ),

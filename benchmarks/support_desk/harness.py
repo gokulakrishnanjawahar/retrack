@@ -122,7 +122,7 @@ def run_benchmark(
         distill_llm = AnthropicLLM(api_key=key, model="claude-haiku-5-5", effort="low")
         embedder = VertexEmbedder(
             project=os.environ["GOOGLE_CLOUD_PROJECT"],
-            location=os.environ.get("GOOGLE_CLOUD_LOCATION", "asia-south1"),
+            location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
             credentials=google_credentials(
                 os.environ.get("GOOGLE_WORKLOAD_IDENTITY_PROVIDER"),
                 os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL"),

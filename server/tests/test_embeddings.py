@@ -81,7 +81,7 @@ def test_enabled_embedder_signs_in_without_a_key(monkeypatch):
     assert (kwargs["vertexai"], kwargs["project"], kwargs["location"]) == (
         True,
         "retrack",
-        "asia-south1",
+        "global",
     )
     assert isinstance(kwargs["credentials"], identity_pool.Credentials)
 
