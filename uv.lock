@@ -1262,6 +1262,7 @@ source = { editable = "server" }
 dependencies = [
     { name = "anthropic" },
     { name = "fastapi" },
+    { name = "google-auth" },
     { name = "google-genai" },
     { name = "langgraph" },
     { name = "psycopg", extra = ["binary"] },
@@ -1272,6 +1273,7 @@ dependencies = [
 requires-dist = [
     { name = "anthropic", specifier = ">=1.15.0" },
     { name = "fastapi", specifier = ">=0.143.3" },
+    { name = "google-auth", specifier = ">=2.62.0" },
     { name = "google-genai", specifier = ">=2.31.0" },
     { name = "langgraph", specifier = ">=1.2.16" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },

@@ -29,6 +29,7 @@ from retrack_server.admin import create_project, set_trust
 from retrack_server.app import app, embedder_dependency, llm_dependency
 from retrack_server.distiller import PLAYBOOK_SCHEMA
 from retrack_server.embeddings import FakeEmbedder, VertexEmbedder
+from retrack_server.gcp_auth import google_credentials
 from retrack_server.llm import AnthropicLLM, LLMResponse
 from retrack_server.worker import drain
 
@@ -122,6 +123,10 @@ def run_benchmark(
         embedder = VertexEmbedder(
             project=os.environ["GOOGLE_CLOUD_PROJECT"],
             location=os.environ.get("GOOGLE_CLOUD_LOCATION", "asia-south1"),
+            credentials=google_credentials(
+                os.environ.get("GOOGLE_WORKLOAD_IDENTITY_PROVIDER"),
+                os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL"),
+            ),
         )
 
     admin = psycopg.connect(os.environ["DATABASE_URL"], autocommit=True)

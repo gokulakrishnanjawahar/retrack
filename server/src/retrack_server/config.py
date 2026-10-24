@@ -20,6 +20,9 @@ class Settings:
     embeddings_enabled: bool = False
     google_cloud_project: str | None = None
     google_cloud_location: str = "asia-south1"
+    # Keyless sign-in from Vercel (gcp_auth). Without both, Google's default credentials apply.
+    google_workload_identity_provider: str | None = None
+    google_service_account_email: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -37,4 +40,8 @@ class Settings:
             embeddings_enabled=os.environ.get("RETRACK_EMBEDDINGS_ENABLED", "").lower() == "true",
             google_cloud_project=os.environ.get("GOOGLE_CLOUD_PROJECT") or None,
             google_cloud_location=os.environ.get("GOOGLE_CLOUD_LOCATION") or "asia-south1",
+            google_workload_identity_provider=(
+                os.environ.get("GOOGLE_WORKLOAD_IDENTITY_PROVIDER") or None
+            ),
+            google_service_account_email=os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") or None,
         )

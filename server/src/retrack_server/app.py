@@ -22,6 +22,7 @@ from retrack_server.config import Settings
 from retrack_server.db import enqueue_run, project_scope
 from retrack_server.embeddings import Embedder, embedder_from_settings
 from retrack_server.evals import list_cases, record_results
+from retrack_server.gcp_auth import remember_vercel_oidc_token
 from retrack_server.ingest import ingest
 from retrack_server.llm import LLMClient, llm_from_settings
 from retrack_server.metrics import project_metrics
@@ -105,8 +106,10 @@ def llm_dependency(settings: Annotated[Settings, Depends(get_settings)]) -> LLMC
 
 
 def embedder_dependency(
-    settings: Annotated[Settings, Depends(get_settings)],
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
 ) -> Embedder | None:
+    # Vercel sends a fresh sign-in token with every request; keyless Google sign-in uses it.
+    remember_vercel_oidc_token(request.headers.get("x-vercel-oidc-token"))
     return get_embedder(settings)
 
 

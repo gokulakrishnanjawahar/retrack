@@ -13,3 +13,6 @@ supabase/.temp/
 dist/
 *.egg-info/
 .vercel/
+
+# Private reference notes (account and billing details); never commit
+GOOGLE_CLOUD.md

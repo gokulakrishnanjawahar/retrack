@@ -1,8 +1,9 @@
-"""Embeddings (docs/decisions.md): gemini-embedding-001 on Vertex AI in Mumbai, 1,536 dims.
+"""Embeddings (docs/decisions.md): gemini-embedding-2 on Vertex AI in Mumbai, 1,536 dims.
 
 Calls happen only when RETRACK_EMBEDDINGS_ENABLED=true and a Google Cloud project is set;
-tests use FakeEmbedder. Results are cached per project by content hash, so unchanged text
-is never embedded twice (docs/constraints.md).
+tests use FakeEmbedder. On Vercel the embedder signs in without a key (gcp_auth). Results
+are cached per project and model by content hash, so unchanged text is never embedded twice
+(docs/constraints.md).
 """
 
 import hashlib
@@ -15,9 +16,13 @@ from uuid import UUID
 import psycopg
 
 from retrack_server.config import Settings
+from retrack_server.gcp_auth import google_credentials
 
 DIMENSIONS = 1536
-MODEL = "gemini-embedding-001"
+MODEL = "gemini-embedding-2"
+# Gemini Embedding 2 takes the task inside the text (task_type is rejected). Tasks are
+# compared with tasks and playbook patterns, so the symmetric similarity task fits.
+TASK_PREFIX = "task: sentence similarity | query: "
 
 
 class Embedder(Protocol):
@@ -27,12 +32,22 @@ class Embedder(Protocol):
 
 
 class VertexEmbedder:
-    def __init__(self, *, project: str, location: str, model: str = MODEL, client: Any = None):
+    def __init__(
+        self,
+        *,
+        project: str,
+        location: str,
+        model: str = MODEL,
+        credentials: Any = None,
+        client: Any = None,
+    ):
         self.model = model
         if client is None:
             from google import genai  # imported lazily: only production needs it
 
-            client = genai.Client(vertexai=True, project=project, location=location)
+            client = genai.Client(
+                vertexai=True, project=project, location=location, credentials=credentials
+            )
         self._client = client
 
     def embed(self, texts: list[str]) -> list[list[float]]:
@@ -40,12 +55,13 @@ class VertexEmbedder:
 
         response = self._client.models.embed_content(
             model=self.model,
-            contents=texts,
-            config=types.EmbedContentConfig(
-                task_type="SEMANTIC_SIMILARITY", output_dimensionality=DIMENSIONS
-            ),
+            contents=[TASK_PREFIX + text for text in texts],
+            config=types.EmbedContentConfig(output_dimensionality=DIMENSIONS),
         )
-        return [list(e.values) for e in response.embeddings]
+        vectors = [list(e.values) for e in response.embeddings]
+        if len(vectors) != len(texts):
+            raise ValueError(f"Vertex AI returned {len(vectors)} vectors for {len(texts)} texts")
+        return vectors
 
 
 @dataclass
@@ -72,7 +88,11 @@ def embedder_from_settings(settings: Settings) -> Embedder | None:
     if not (settings.embeddings_enabled and settings.google_cloud_project):
         return None
     return VertexEmbedder(
-        project=settings.google_cloud_project, location=settings.google_cloud_location
+        project=settings.google_cloud_project,
+        location=settings.google_cloud_location,
+        credentials=google_credentials(
+            settings.google_workload_identity_provider, settings.google_service_account_email
+        ),
     )
 
 

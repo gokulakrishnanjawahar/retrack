@@ -32,7 +32,7 @@ This file is short on purpose. Before any feature work, read the relevant file i
 - **Usage metering:** simple daily counters in Postgres.
 - **Backend:** FastAPI, hosted on Vercel in `bom1` (Mumbai). Queue workers are triggered every minute by Supabase Cron calling `/internal/drain`.
 - **LLM:** Claude Haiku 5.5 behind a provider-agnostic `LLMClient`; customers may bring their own key at launch.
-- **Embeddings:** `gemini-embedding-001` on Vertex AI `asia-south1`, 1,536 dimensions, behind an `Embedder` interface.
+- **Embeddings:** `gemini-embedding-2` on Vertex AI `asia-south1`, 1,536 dimensions, behind an `Embedder` interface. Vercel signs in to Google keylessly (Workload Identity Federation); no Google key exists.
 - **Local development:** a dev Supabase cloud project (no Docker).
 - **Migrations:** plain SQL in `supabase/migrations/`, applied with the Supabase CLI. No ORM.
 - **Python tooling:** uv (packages, Python version), pytest, ruff.
