@@ -1,5 +1,8 @@
 # Product
 
+## Tagline
+**Retrack builds experience for AI agents.**
+
 ## One line
 Retrack is the learning layer for production AI agents: every run makes agents safer, cheaper and more reliable.
 
@@ -48,6 +51,6 @@ Supermemory and Mem0 remember **what is true about users**. Retrack remembers **
 Defensibility is the **combination**: verified learning + firewall + regression + migration in one store, plus measured ROI. Main threat: LangChain turning LangMem into a hosted product. Stay framework-flexible (OpenTelemetry ingestion later).
 
 ## Business notes for engineering
-- Pricing is not decided and is out of scope for the codebase.
+- Plans are Free, Pro and Team (no Enterprise for now); prices and limits are not decided, and plans are out of scope for the codebase. See `decisions.md`.
 - Record usage (runs captured, recalls served) per project per day so billing can be added later.
 - Open vs closed source is undecided; keep `sdk/` cleanly separable from `server/`.

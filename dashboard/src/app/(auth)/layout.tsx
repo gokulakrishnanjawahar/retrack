@@ -1,6 +1,7 @@
 import { PipelineShowcase } from "@/components/auth/pipeline-showcase";
 import { Logo } from "@/components/brand/logo";
 import { Backdrop } from "@/components/fx/backdrop";
+import { TAGLINE } from "@/lib/brand";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -10,9 +11,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <Logo />
         <div className="space-y-8">
           <div className="max-w-[520px] space-y-4">
-            <p className="font-mono text-xs tracking-wide text-brand">EXPERIENCE MEMORY FOR AI AGENTS</p>
             <h1 className="text-gradient text-[44px] leading-[1.05] font-semibold tracking-[-0.03em]">
-              Your agents remember what worked.
+              {TAGLINE}
             </h1>
             <p className="text-[15px] leading-relaxed text-muted-foreground">
               Retrack captures every run, verifies the outcome, turns successes into playbooks and
@@ -26,8 +26,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </section>
       <main className="flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-[380px]">
-          <div className="mb-10 lg:hidden">
+          <div className="mb-10 space-y-3 lg:hidden">
             <Logo />
+            <p className="text-sm text-muted-foreground">{TAGLINE}</p>
           </div>
           {children}
         </div>

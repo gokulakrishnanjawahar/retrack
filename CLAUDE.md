@@ -2,6 +2,8 @@
 
 Retrack is a developer SaaS that gives production AI agents **experience memory**. It captures every agent run, verifies whether it succeeded, turns successes into reusable **playbooks** and failures into **failure signatures**, and recalls the right ones before the agent's next task. The same store doubles as a regression test suite and a model-migration safety net, and a memory firewall stops poisoned or untrusted runs from becoming memory.
 
+**Tagline:** "Retrack builds experience for AI agents." Use it wherever the product describes itself (landing page, login page, link previews).
+
 Owner: Gokul (solo developer). Building the full product phase by phase.
 
 ## Read before working

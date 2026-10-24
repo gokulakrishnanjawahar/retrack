@@ -6,6 +6,7 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Area | Decision | Notes |
 |---|---|---|
 | Name | Retrack | |
+| Tagline | "Retrack builds experience for AI agents." (Gokul, 2026-10-24) | The product tagline everywhere: landing page, login page, link previews. Replaces "Experience memory for production AI agents" |
 | Database | Supabase Postgres | |
 | Vector store | pgvector inside Supabase Postgres | |
 | Job queue | pgmq (Supabase Queues) | No extra service |
@@ -20,7 +21,7 @@ Update this file whenever a decision is made. Claude Code: never resolve an OPEN
 | Python tooling | uv, pytest, ruff | |
 | Developer OS | macOS (Apple Silicon) | |
 | Git | GitHub remote: gokulakrishnanjawahar/retrack, branch `main`; private | Closed source (see Source) |
-| Pricing | Not decided; out of scope for code | Only record usage |
+| Pricing plans | Three plans: **Free, Pro, Team** (Gokul, 2026-10-24). No Enterprise plan for now | Prices, limits and the billing unit are not decided. Not built into the product yet (no plans or billing in code); the code only records usage |
 | Phase order | See `plan.md` (2026-10-15) | Change only with Gokul's approval |
 | Local development | Dev Supabase cloud project (no Docker); migrations applied with Supabase CLI `db push` | Tests that need a database run against it |
 | Backend framework | FastAPI (Python) | Portable across hosts |
