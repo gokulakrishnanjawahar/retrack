@@ -100,7 +100,7 @@ class Retrack:
         model_id: str | None = None,
         tool_versions: dict[str, str] | None = None,
         max_playbooks: int = 3,
-        timeout: float = 0.4,
+        timeout: float = 1.5,
     ) -> Memory:
         """Memory for the task the agent is about to do. Never raises and never blocks
         longer than `timeout` seconds: on any problem it returns empty memory.

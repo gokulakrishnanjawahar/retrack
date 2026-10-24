@@ -270,6 +270,7 @@ async def recall_memory(
     conn: Annotated[psycopg.Connection, Depends(get_conn)],
     project_id: Annotated[UUID, Depends(authenticated_project)],
     embedder: Annotated[Embedder | None, Depends(embedder_dependency)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> JSONResponse:
     """Gated playbooks and failure warnings for the task an agent is about to do."""
     body = await request.body()
@@ -279,7 +280,14 @@ async def recall_memory(
         recall_request = RecallIn.model_validate_json(body)
     except ValidationError as exc:
         raise ApiError(422, "invalid_request", str(exc.errors(include_url=False))) from exc
-    result = await run_in_threadpool(recall, conn, project_id, recall_request, embedder)
+    result = await run_in_threadpool(
+        recall,
+        conn,
+        project_id,
+        recall_request,
+        embedder,
+        embed_timeout=settings.recall_embed_timeout_ms / 1000,
+    )
     return JSONResponse(
         {
             "recall_id": result.recall_id,

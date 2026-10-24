@@ -43,7 +43,7 @@ Supabase, region ap-south-1 (Mumbai)  │ every minute, HTTP POST with secret   
 - **Database connections.** Vercel functions connect through Supabase's transaction pooler, as the restricted `retrack_server` login. Each server instance keeps a small `psycopg-pool` connection pool (1–5 connections, checked on checkout) so requests skip connection setup. All tenant queries use transaction-local settings (`project_scope`), which work with transaction pooling.
 - **Deploying.** Vercel project `retrack-api` (root directory `server/`, framework preset FastAPI; region `bom1` set in the repo-root `vercel.json`, because the CLI reads config from the folder you deploy from; production URL `https://retrack-api.vercel.app`). Vercel installs the *repo root's* dependencies from the workspace `uv.lock`, so the root `pyproject.toml` depends on `retrack-server`; `server/main.py` puts `server/src` on the import path because the package itself is not installed. `.vercelignore` keeps `.env`, tests and docs out of uploads.
 - **One database for dev and the live deploy (for now).** The live worker (Supabase Cron -> Vercel) drains the same queue the dev tools use, so local experiments pause the Cron job while they run (the benchmark does this automatically). Before real customers, the live deploy needs its own Supabase project.
-- **Same region.** API, workers and database all run in Mumbai, to meet the ingest (50 ms) and recall (300 ms) targets.
+- **Same region.** API, workers and database all run in Mumbai, to meet the ingest (50 ms) and recall (p95 900 ms) targets. The one exception is the embedding call, which goes to Vertex AI's global endpoint (about 0.4 s from Mumbai).
 
 ### Cost
 | Stage | Supabase | Vercel | Notes |

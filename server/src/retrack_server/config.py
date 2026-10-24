@@ -24,6 +24,8 @@ class Settings:
     # Keyless sign-in from Vercel (gcp_auth). Without both, Google's default credentials apply.
     google_workload_identity_provider: str | None = None
     google_service_account_email: str | None = None
+    # How long recall waits for the query embedding before searching by keywords only.
+    recall_embed_timeout_ms: int = 800
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -45,4 +47,5 @@ class Settings:
                 os.environ.get("GOOGLE_WORKLOAD_IDENTITY_PROVIDER") or None
             ),
             google_service_account_email=os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") or None,
+            recall_embed_timeout_ms=int(os.environ.get("RETRACK_RECALL_EMBED_TIMEOUT_MS") or 800),
         )

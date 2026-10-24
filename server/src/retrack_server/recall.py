@@ -12,6 +12,7 @@ are off or slow, recall falls back to keywords only; it never blocks the agent.
 import concurrent.futures
 import datetime as dt
 import hashlib
+import logging
 import re
 import time
 import uuid
@@ -27,7 +28,9 @@ from retrack_server.redaction import redact_text
 from retrack_server.schemas import RecallIn
 
 FRESHNESS_HALF_LIFE_DAYS = 30
-EMBED_TIMEOUT_SECONDS = 0.15
+# Default wait for the query embedding; the server's setting RETRACK_RECALL_EMBED_TIMEOUT_MS
+# overrides it (Settings.recall_embed_timeout_ms).
+EMBED_TIMEOUT_SECONDS = 0.8  # gemini-embedding-2 (global) took 350-505 ms from Vercel bom1
 CANDIDATES_PER_METHOD = 20
 WARNING_MIN_OCCURRENCES = 2
 MAX_WARNINGS = 5
@@ -37,6 +40,8 @@ RETIRE_BELOW_SUCCESS = 0.5
 REPLAY_MIN_SIMILARITY = 0.95
 REPLAY_MIN_USES = 20
 REPLAY_MIN_SUCCESS = 0.9
+
+logger = logging.getLogger(__name__)
 
 _embed_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="embed")
 
@@ -194,13 +199,22 @@ def _keyword_query(text: str) -> str | None:
     return " | ".join(words) or None
 
 
-def _embed_with_timeout(embedder: Embedder | None, text: str) -> str | None:
+def _embed_with_timeout(
+    embedder: Embedder | None, text: str, timeout: float = EMBED_TIMEOUT_SECONDS
+) -> str | None:
     if embedder is None:
         return None
+    started = time.monotonic()
     future = _embed_pool.submit(embedder.embed, [text])
     try:
-        return to_vector_literal(future.result(timeout=EMBED_TIMEOUT_SECONDS)[0])
-    except Exception:  # timeout or provider error: fall back to keywords
+        return to_vector_literal(future.result(timeout=timeout)[0])
+    except Exception as exc:  # timeout or provider error: fall back to keywords
+        logger.warning(
+            "recall fell back to keywords after %d ms (limit %d ms): %s",
+            (time.monotonic() - started) * 1000,
+            timeout * 1000,
+            type(exc).__name__,
+        )
         return None
 
 
@@ -272,6 +286,7 @@ def recall(
     request: RecallIn,
     embedder: Embedder | None,
     now: dt.datetime | None = None,
+    embed_timeout: float = EMBED_TIMEOUT_SECONDS,
 ) -> RecallResult:
     started = time.monotonic()
     now = now or dt.datetime.now(dt.UTC)
@@ -296,7 +311,7 @@ def recall(
             result = RecallResult(holdout=True, mode="holdout")
         else:
             # Embedding happens with the transaction open but bounded by a short timeout.
-            vector = _embed_with_timeout(embedder, task)
+            vector = _embed_with_timeout(embedder, task, embed_timeout)
             query = _keyword_query(task)
             rows = []
             if vector is not None:

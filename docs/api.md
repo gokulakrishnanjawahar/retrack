@@ -90,7 +90,7 @@ Resolution: the highest-ranked source wins (test > event > feedback > judge); wi
   "mode": "hybrid"
 }
 ```
-Warnings also carry `recovery`, `recovery_steps` and `unrecoverable`; playbooks carry `replay_eligible`; `replay_plan` is set when plan replay is allowed (Phase 11). `mode` is `hybrid` (vectors + keywords), `keyword` (embeddings off or slower than 150 ms), `holdout` or `no_agent`. Only `active` playbooks are ever returned. Warnings are failure signatures seen at least twice for the agent's tools.
+Warnings also carry `recovery`, `recovery_steps` and `unrecoverable`; playbooks carry `replay_eligible`; `replay_plan` is set when plan replay is allowed (Phase 11). `mode` is `hybrid` (vectors + keywords), `keyword` (embeddings off, failed, or slower than the 800 ms wait), `holdout` or `no_agent`. Only `active` playbooks are ever returned. Warnings are failure signatures seen at least twice for the agent's tools.
 When `holdout` is true, return no memory and mark the run so metrics can compare.
 
 ## SDK surface (Python, sketch)
@@ -100,7 +100,7 @@ from retrack import Retrack
 rt = Retrack(api_key=os.environ["RETRACK_API_KEY"], agent="support-agent")
 graph = builder.compile()
 result = graph.invoke(inputs, config={"callbacks": [rt.callback()]})  # capture
-memory = rt.recall(task, run_id=run_id)  # before task; 400 ms, fails open
+memory = rt.recall(task, run_id=run_id)  # before task; 1.5 s timeout, fails open
 prompt_text = memory.as_prompt()  # or builder.add_node(rt.recall_node())
 handler = rt.callback()  # handler.last_run_id after a run
 rt.feedback(handler.last_run_id, outcome="success", source="test")

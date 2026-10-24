@@ -3,8 +3,9 @@
 ## Service targets
 | Metric | Target |
 |---|---|
-| Recall latency | p50 under 120 ms, p95 under 300 ms (server side) |
-| SDK recall timeout | default 400 ms, then fail open (empty memory) |
+| Recall latency | p50 under 600 ms, p95 under 900 ms (server side). Was 120/300 ms; changed 2026-10-24 (Gokul) because the query embedding (gemini-embedding-2, global endpoint) takes 350-505 ms from Vercel bom1, and recall must search by meaning. Candidate search itself stays about 50 ms |
+| Recall embedding wait | 800 ms (`RETRACK_RECALL_EMBED_TIMEOUT_MS`), then keyword-only search; the miss is logged with its duration |
+| SDK recall timeout | default 1.5 s (was 400 ms), then fail open (empty memory) |
 | Ingest acknowledgement | under 50 ms p95 (validate + enqueue only) |
 | Run to playbook availability | under 15 minutes normally; non-urgent batch work may take up to 24 h |
 | Hosted availability | 99.5%+ |

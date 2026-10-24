@@ -50,5 +50,5 @@ Recall has a strict timeout (see `constraints.md`). On timeout or error, the SDK
 - **Auto-retire:** success below 50% after 10 or more uses.
 - **Holdout:** 10% per project (`projects.holdout_rate`), decided deterministically from project and run id.
 - **Threshold:** `agents.recall_threshold`, default 0.72.
-- **Embedding at recall:** 150 ms budget; slower or disabled embeddings fall back to keyword-only search.
+- **Embedding at recall:** 800 ms budget (`RETRACK_RECALL_EMBED_TIMEOUT_MS`; was 150 ms until 2026-10-24); slower, failed or disabled embeddings fall back to keyword-only search, and the fallback is logged with its duration. Measured from Vercel bom1 on 2026-10-24: 11 of 12 recalls searched by meaning at 371-527 ms server time; the miss was a new instance's first Google sign-in.
 - **Latency check:** candidate search over 10,000 active playbooks measured at about 52 ms server execution after fixing the query plan (target p50 under 120 ms).

@@ -133,3 +133,12 @@ def test_recall_node_adds_memory_to_graph_state():
 def test_recall_node_without_a_task_returns_empty_memory():
     rt = client(lambda r: httpx.Response(200, json=ANSWER))
     assert rt.recall_node()({}) == {"retrack_memory": ""}
+
+
+def test_default_recall_timeout_leaves_room_for_the_servers_embedding_wait():
+    import inspect
+
+    from retrack import Retrack
+
+    # Server waits up to 800 ms for the query embedding; network on top.
+    assert inspect.signature(Retrack.recall).parameters["timeout"].default == 1.5
